@@ -49,6 +49,13 @@ All three sections record concrete non-placeholder findings even when they pass.
 
 ## Artifact lifecycle
 
+In autonomous mode, PENDING instructs the Builder to schedule the required Reviewer;
+FAIL instructs it to repair actionable findings, regenerate ASCII, and request a
+fresh review. Neither result alone is a reason to end the task or wait for user
+confirmation. Follow [project-intake.md](project-intake.md) for real blockers and
+replanning after non-improving attempts. Never change an independent FAIL to PASS
+yourself. Reuse valid reviews for visual-only work as specified below.
+
 Before scheduling a Reviewer, run the saved-review preflight:
 
 ```bash

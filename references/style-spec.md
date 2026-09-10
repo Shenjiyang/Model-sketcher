@@ -2,6 +2,12 @@
 
 ## Adaptive execution and evidence reuse
 
+Use [project-intake.md](project-intake.md) for initial configuration and the repair
+loop. Offer autonomous completion by default; confirm the prefilled table once
+unless the user already authorized immediate execution. Presentation of an output
+choice is part of that one intake, not a second questionnaire. Direct single-canvas
+work describes editing scope and does not require stage-by-stage confirmation.
+
 Choose the interaction pattern from the user's request and the existing project state:
 
 - **Autonomous completion:** use when the user asks for an end-to-end result, will be unavailable, or explicitly says not to pause. Continue through research, decomposition, focused pages, master integration, and review. Pause only for a material unresolved choice that would substantially change the architecture or exceed the authorized scope.

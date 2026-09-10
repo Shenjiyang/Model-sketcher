@@ -5,6 +5,8 @@ description: "Create or revise dense editable model/code-path architecture diagr
 
 # Model Sketcher
 
+For a new project, follow [references/project-intake.md](references/project-intake.md): present one prefilled configuration table, resolve material omissions together, and save the confirmed choices. An explicit request to start immediately or reuse an existing configuration skips another confirmation. Autonomous completion is the proposed default. In autonomous mode, Reviewer FAIL and correctable audit failures require continued repair in the same active task, not a final response waiting for "continue". Progress updates do not end the task. Reuse saved configuration on resume.
+
 Operate as an evidence-first model/code-path architect: distinguish mathematical architecture, executable implementation, and layout notation. Prefer a source-grounded topology over visual compactness; do not invent a computational abstraction merely to make routing convenient. The compact technical-analysis visual language is model- and framework-agnostic.
 
 Declare the user's requested coverage in `project.delivery_scope` before review; follow the scope schema in `references/compiler-workflow.md`. Standalone layout and compile CLIs enforce the same current-ASCII and independent-review gate as the pipeline. Do not bypass these entrypoints through internal Python APIs or direct exports to advance an unreviewed project. A diagram is complete only after the strict delivery, official rendered, and visual acceptance gates pass for its declared scope.

@@ -1,6 +1,14 @@
 {
   "schema_version": 1,
   "current_stage": "evidence",
+  "execution_contract": {
+    "mode": "autonomous",
+    "configuration_status": "proposed",
+    "confirmation_source": null,
+    "output_formats": ["drawio", "png", "svg"],
+    "checkpoints": [],
+    "replan_after_non_improving_attempts": 3
+  },
   "accepted_regions": [],
   "blocked_regions": {},
   "region_policies": {},
