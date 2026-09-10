@@ -42,8 +42,9 @@ When the deliverable is an editable `.drawio`, when the user edits the diagram d
 
 ## Workflow
 
-Read `references/layout-engine-adapter.md`: global compound ELK is the default
-and only compiler layout backend (`elk` is an alias for `elk-compound`). The old
+Read `references/layout-engine-adapter.md`: ELK global layout is the only
+compiler layout path. Do not ask the user to choose an engine or add an engine
+selector to the intake table; normal commands need no engine flag. The old
 native and hybrid layout paths are removed. Every ordinary edge must be ELK-owned,
 including cross-region edges, before recorded precision adjustments. Inspect `elk_edge_ids` and
 `native_routed_edge_ids`; never describe partial routing as full ELK coverage.

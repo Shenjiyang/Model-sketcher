@@ -43,6 +43,29 @@ class SemanticGateTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(output.is_file())
 
+    def test_engine_choice_hidden_but_legacy_commands_generate_same_layout(self):
+        layout, output = self.root / 'layout.json', self.root / 'model.drawio'
+        for name, args in [
+            ('plan_layout.py', [self.arch, layout]),
+            ('run_compiler_pipeline.py', [self.arch, '--layout', layout,
+                '--drawio', output, '--topology-contract', self.ascii,
+                '--topology-review', self.review]),
+        ]:
+            help_result = self.command(name, '--help')
+            self.assertEqual(help_result.returncode, 0)
+            self.assertNotIn('--layout-engine', help_result.stdout)
+            baseline = None
+            for engine in (None, 'elk', 'elk-compound'):
+                with self.subTest(tool=name, engine=engine):
+                    flags = [] if engine is None else ['--layout-engine', engine]
+                    result = self.command(name, *args, *flags)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    generated = json.loads(layout.read_text())
+                    self.assertEqual(generated['layout_engine']['name'], 'compound-elk-layered')
+                    if baseline is None:
+                        baseline = generated
+                    self.assertEqual(generated, baseline)
+
     def test_visual_reuse_but_source_and_scope_edits_invalidate(self):
         self.data['project']['typography'] = {'ordinary_node_font': 22}
         self.arch.write_text(json.dumps(self.data))

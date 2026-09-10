@@ -564,7 +564,7 @@ def plan(
     if layout_engine not in {"elk", "elk-compound"}:
         raise ValueError(
             f"unsupported layout engine {layout_engine!r}; native has been removed; "
-            "use global ELK (elk-compound)"
+            "use global ELK (omit the legacy engine option)"
         )
     from compound_layout import plan_compound
     return plan_compound(
@@ -580,7 +580,8 @@ def main() -> int:
     parser.add_argument("output", type=Path)
     parser.add_argument("--previous-layout", type=Path)
     parser.add_argument("--state", type=Path)
-    parser.add_argument("--layout-engine", choices=("elk", "elk-compound"), default="elk-compound")
+    # Compatibility only: both old spellings select the sole global backend.
+    parser.add_argument("--layout-engine", choices=("elk", "elk-compound"), default="elk-compound", help=argparse.SUPPRESS)
     parser.add_argument(
         "--defer-hierarchy-arrows",
         action="store_true",

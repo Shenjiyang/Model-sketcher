@@ -63,7 +63,8 @@ def main() -> int:
     parser.add_argument("--previous-layout", type=Path)
     parser.add_argument("--change-plan", type=Path)
     parser.add_argument("--require-source-files", action="store_true")
-    parser.add_argument("--layout-engine", choices=("elk", "elk-compound"), default="elk-compound")
+    # Compatibility only: not a user-facing engine choice.
+    parser.add_argument("--layout-engine", choices=("elk", "elk-compound"), default="elk-compound", help=argparse.SUPPRESS)
     parser.add_argument("--semantic-view", help="Select a declared view in memory; never rewrite canonical architecture")
     args = parser.parse_args()
 
@@ -148,7 +149,7 @@ def main() -> int:
     if args.semantic_view is not None:
         data["project"]["semantic_view"] = args.semantic_view
     layout_started = time.monotonic()
-    print(f"gate 4: RUNNING ({args.layout_engine} layout)")
+    print("gate 4: RUNNING (global ELK layout)")
     previous_layout = json.loads(args.previous_layout.read_text(encoding="utf-8")) if args.previous_layout else None
     state = read_state(args.state)
     try:

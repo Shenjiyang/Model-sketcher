@@ -24,7 +24,10 @@ project_active_view(canonical_ir)
 
 ELK must own every ordinary edge before recorded precision adjustments. Do not rewrite canonical IDs,
 sequence membership, region ownership, expansion attachments, or edge kinds.
-`elk-compound` is the default and `elk` is an alias for the same global path.
+ELK global layout is the only compiler path; normal commands omit engine flags.
+For compatibility only, hidden `--layout-engine elk` and
+`--layout-engine elk-compound` arguments still call that same path. They are not
+different modes and must not be presented as configuration choices.
 Native and hybrid compiler backends have been removed; `native` is rejected.
 No ordinary edge may silently fall back to a hand-written router.
 
@@ -88,7 +91,7 @@ For example:
  "edges": {"output": {"label_position": {"x": 0, "y": -12}}}}}
 ```
 
-Use the strict pipeline's `--state` with `--layout-engine elk-compound`.
+Use the strict pipeline's `--state` to apply precision overrides.
 Add `--previous-layout` and `--previous-architecture` to the pipeline to refine
 an existing base without rerunning ELK; its
 architecture digest, semantic view and visible IDs must match exactly.

@@ -78,14 +78,12 @@ python3 scripts/run_compiler_pipeline.py path/to/architecture.json \
   --topology-contract path/to/topology.contract.txt \
   --topology-review path/to/topology-review.json \
   --drawio path/to/model.drawio \
-  --audit-manifest path/to/model.audit.json \
-  --layout-engine elk
+  --audit-manifest path/to/model.audit.json
 ```
 
 The pipeline deliberately stops at the topology-review gate when a valid independent review is absent. See [`references/topology-review-workflow.md`](references/topology-review-workflow.md) for the review procedure and [`references/strict-delivery-contract.md`](references/strict-delivery-contract.md) for final acceptance requirements.
 
-Global compound ELK is the default; no engine flag is needed. Both
-`--layout-engine elk` and `--layout-engine elk-compound` select it explicitly.
+ELK global layout is the only layout path; no engine selection is needed.
 The old native and hybrid layout backends have been removed; `native` is rejected,
 not silently migrated. Text measurement, hierarchy-arrow geometry and validation
 remain shared helpers, not alternate ordinary-edge routers.
