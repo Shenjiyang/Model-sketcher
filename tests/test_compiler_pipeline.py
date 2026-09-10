@@ -440,18 +440,16 @@ class CompilerPipelineTest(unittest.TestCase):
         data = sample()
         layout = plan(data, "digest", layout_engine="elk")
         self.assertEqual(layout["schema_version"], 3)
-        selection = layout["layout_engine"]["region_candidate_selection"]["model"]
-        self.assertIn(selection["selected_alignment"], [item["alignment"] for item in selection["attempts"]])
-        self.assertTrue(all("score" in item or "adapter_error" in item for item in selection["attempts"]))
         self.assertEqual(
-            {key: value for key, value in layout["layout_engine"].items() if key != "region_candidate_selection"},
+            {key: value for key, value in layout["layout_engine"].items() if key != "route_preflight"},
             {
-                "name": "hybrid-elk-layered",
+                "name": "compound-elk-layered",
                 "elkjs_version": "0.12.0",
                 "elk_region_ids": ["model"],
-                "macro_engine": "model-sketcher-native",
+                "macro_engine": "elk-layered",
                 "elk_edge_ids": ["a_b"],
                 "native_routed_edge_ids": [],
+                "acceptance": "pending",
             },
         )
         self.assertEqual(layout["edges"]["a_b"]["waypoints"], [])
@@ -1883,7 +1881,7 @@ class CompilerPipelineTest(unittest.TestCase):
         errors = validate(data, Path("."))
         self.assertTrue(any("backend-specific label" in error for error in errors))
 
-    def test_incremental_layout_preserves_unaffected_region_and_override(self):
+    def test_semantic_revision_cannot_reuse_old_geometry_or_ignore_preservation(self):
         old = sample()
         old["regions"]["side"] = {
             "label": "Side", "parent": None, "direction": "column",
@@ -1900,11 +1898,11 @@ class CompilerPipelineTest(unittest.TestCase):
             "region_policies": {"model": "adaptive", "side": "preserve"},
             "layout_overrides": {"regions": {}, "nodes": {"a": {"y": 321.0}}, "edges": {}},
         }
-        updated = plan(new, "new", previous, state)
-        self.assertEqual(updated["regions"]["side"], previous["regions"]["side"])
-        self.assertEqual(updated["nodes"]["c"], previous["nodes"]["c"])
-        self.assertEqual(updated["nodes"]["a"]["y"], 321.0)
-        self.assertIn("side", updated["incremental"]["preserved_regions"])
+        with self.assertRaisesRegex(ValueError, 'preserved/frozen'):
+            plan(new, "new", previous, state)
+        state['region_policies'] = {}
+        with self.assertRaisesRegex(ValueError, 'does not match'):
+            plan(new, "new", previous, state)
 
 
 if __name__ == "__main__":

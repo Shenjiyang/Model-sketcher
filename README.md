@@ -60,7 +60,7 @@ Start by reading [`SKILL.md`](SKILL.md) and [`references/compiler-workflow.md`](
 2. Record the requested delivery scope, source evidence, operations, tensor shapes, semantic views, and operator sequences.
 3. Validate the architecture IR.
 4. Generate the ASCII topology contract and complete an independent topology review.
-5. Run deterministic native or ELK layout.
+5. Run global ELK layout, then apply recorded precision adjustments as needed.
 6. Compile the editable `.drawio` document and its audit manifest.
 7. Run strict delivery checks, export through Draw.io, and inspect the rendered result.
 
@@ -84,9 +84,12 @@ python3 scripts/run_compiler_pipeline.py path/to/architecture.json \
 
 The pipeline deliberately stops at the topology-review gate when a valid independent review is absent. See [`references/topology-review-workflow.md`](references/topology-review-workflow.md) for the review procedure and [`references/strict-delivery-contract.md`](references/strict-delivery-contract.md) for final acceptance requirements.
 
-`--layout-engine elk` automatically uses compound ELK when ordinary edges cross
-regions; `--layout-engine elk-compound` requests it explicitly. It does not fall
-back to native routing. Stable-ID state overrides allow exact node/region
+Global compound ELK is the default; no engine flag is needed. Both
+`--layout-engine elk` and `--layout-engine elk-compound` select it explicitly.
+The old native and hybrid layout backends have been removed; `native` is rejected,
+not silently migrated. Text measurement, hierarchy-arrow geometry and validation
+remain shared helpers, not alternate ordinary-edge routers.
+Stable-ID state overrides allow exact node/region
 positions, explicit routes and label adjustments after global ELK. A matching
 `--previous-layout` supports refinement without rerunning ELK; attached routes
 are reconciled or rejected explicitly, never silently left disconnected.

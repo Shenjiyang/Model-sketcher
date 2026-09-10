@@ -42,9 +42,10 @@ When the deliverable is an editable `.drawio`, when the user edits the diagram d
 
 ## Workflow
 
-When selecting ELK, read `references/layout-engine-adapter.md`: every ordinary
-edge must be ELK-owned, including cross-region edges. The adapter automatically
-uses compound ELK for connected regions. Inspect `elk_edge_ids` and
+Read `references/layout-engine-adapter.md`: global compound ELK is the default
+and only compiler layout backend (`elk` is an alias for `elk-compound`). The old
+native and hybrid layout paths are removed. Every ordinary edge must be ELK-owned,
+including cross-region edges, before recorded precision adjustments. Inspect `elk_edge_ids` and
 `native_routed_edge_ids`; never describe partial routing as full ELK coverage.
 Compound output is provisional and requires the unchanged audits. Give macro
 guidance through supported project-state hints, then inspect the official render;

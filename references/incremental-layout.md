@@ -15,6 +15,15 @@ Incremental means impact-controlled, not immutable. Semantic dependencies may in
 
 Unspecified regions default to `adaptive`. Never infer `frozen` merely because a region passed review.
 
+Backend capability: the global ELK planner currently rejects `preserve` and
+`frozen` policies rather than claiming to enforce them. The impact analyzer
+retains these concepts for change detection. Migrate an old native project
+explicitly: retain evidence/review, select adaptive reflow only when allowed,
+and regenerate geometry. Do not silently discard a user-required freeze.
+For unchanged architecture, a matching previous layout plus exact overrides
+supports visual-only refinement without another ELK run. After semantic changes,
+regenerate an ELK base; the old incremental native planner has been removed.
+
 ## Change modes
 
 - `patch`: labels, evidence, or non-structural node properties changed.

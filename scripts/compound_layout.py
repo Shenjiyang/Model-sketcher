@@ -11,6 +11,8 @@ from plan_layout_elk import elk_graph, problem_from_region, convert_result
 
 
 def build_graph(data, sizes, title_font, hints=None):
+    from plan_layout import region_title_layout
+    padding = max(42.0, float(data['project'].get('typography', {}).get('ordinary_node_font', 18)) * 2)
     flat = deepcopy(data)
     flat['regions'] = {'all': {'operator_sequences': [
         sequence for region in data['regions'].values()
@@ -41,6 +43,9 @@ def build_graph(data, sizes, title_font, hints=None):
     for rid in order:
         region = data['regions'][rid]
         owns_nodes = any(node['region'] == rid for node in data['nodes'].values())
+        minimum_width = max([sizes[nid][0] for nid, node in data['nodes'].items()
+                             if node['region'] == rid] or [128.0]) + 2 * padding
+        header = region_title_layout(region['label'], minimum_width, title_font)['header_height']
         macro_direction = 'RIGHT' if region.get('child_direction', 'row') == 'row' else 'UP'
         containers[rid] = {
             'id': 'region:' + rid,
@@ -48,7 +53,7 @@ def build_graph(data, sizes, title_font, hints=None):
             'layoutOptions': {
                 **graph['layoutOptions'],
                 'elk.direction': 'UP' if owns_nodes else macro_direction,
-                'elk.padding': f'[top={title_font * 5 + 42},left=42,bottom=42,right=42]',
+                'elk.padding': f'[top={header + padding},left={padding},bottom={padding},right={padding}]',
             },
         }
     for node in graph['children']:
@@ -100,7 +105,7 @@ def flatten_result(result, node_ids):
 
 
 def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=False, previous_layout=None):
-    from plan_layout import node_size, region_title_layout, plan_hierarchy_arrows
+    from plan_layout import node_size, region_title_layout, plan_hierarchy_arrows, auto_place_expansion_regions
     from plan_layout import apply_hierarchy_arrow_overrides
     from junction_routes import normalize_junctions
     overrides = (state or {}).get('layout_overrides', {})
@@ -139,6 +144,22 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
         raw = json.loads(dst.read_text())
     flattened, regions = flatten_result(raw, set(data['nodes']))
     result = convert_result(problem, flattened)
+    # ELK may reserve external label shelves inside a compound's side envelope.
+    # Tighten visible borders, not nodes/routes; routing is not execution content.
+    padding = max(42.0, float(font) * 2)
+    def tighten(rid):
+        children = [child for child, region in data['regions'].items() if region.get('parent') == rid]
+        for child in children:
+            tighten(child)
+        content = [box for nid, box in result['nodes'].items() if data['nodes'][nid]['region'] == rid]
+        content += [regions[child] for child in children]
+        if content:
+            left = min(box['x'] for box in content) - padding
+            right = max(box['x'] + box['w'] for box in content) + padding
+            regions[rid]['x'], regions[rid]['w'] = left, right - left
+    for rid, region in data['regions'].items():
+        if region.get('parent') is None:
+            tighten(rid)
     from focused_layout_quality import candidate_quality
     # A synthetic flattened envelope cannot audit per-region sequence spacing.
     quality = candidate_quality({**problem, 'operator_sequences': []}, result)
@@ -159,6 +180,11 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
     }
     if data['project'].get('semantic_view'):
         layout['semantic_view'] = data['project']['semantic_view']
+    auto_place_expansion_regions(data, layout)
+    layout['canvas'] = {
+        'width': math.ceil(max(box['x'] + box['w'] for box in layout['regions'].values()) + 40),
+        'height': math.ceil(max(box['y'] + box['h'] for box in layout['regions'].values()) + 40),
+    }
     if any(overrides.get(group) for group in ('nodes', 'regions', 'edges')):
         layout = apply_precision(data, layout, overrides)
     if not defer_hierarchy_arrows:

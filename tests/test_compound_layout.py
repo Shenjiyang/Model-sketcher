@@ -10,6 +10,43 @@ from test_layout_regression_matrix import geometry_findings
 
 
 class CompoundLayoutTests(unittest.TestCase):
+    def test_native_is_removed_and_elk_alias_uses_global_backend(self):
+        data = {'project': {}, 'regions': {}, 'nodes': {}, 'edges': {}}
+        with self.assertRaisesRegex(ValueError, 'native has been removed'):
+            plan(data, 'test', layout_engine='native')
+        with patch('compound_layout.plan_compound', return_value={'sentinel': True}) as backend:
+            for engine in ('elk', 'elk-compound'):
+                self.assertEqual(plan(data, 'test', layout_engine=engine), {'sentinel': True})
+            self.assertEqual(plan(data, 'test'), {'sentinel': True})
+            self.assertEqual(backend.call_count, 3)
+
+    def test_elk_unavailable_never_falls_back(self):
+        from test_compiler_pipeline import sample
+        with patch('compound_layout.subprocess.run', side_effect=FileNotFoundError('node missing')):
+            with self.assertRaisesRegex(FileNotFoundError, 'node missing'):
+                plan(sample(), 'test')
+
+    def test_hierarchy_translation_carries_internal_bends(self):
+        from plan_layout import _move_region_tree
+        from test_precision_layout import fixture
+        from junction_routes import points_for
+        data, base = fixture()
+        base['edges']['ab']['waypoints'] = [[140, 330], [170, 330], [170, 280], [140, 280]]
+        before = points_for(data['edges']['ab'], base['edges']['ab'], base['nodes'])
+        region = base['regions']['r']
+        _move_region_tree(data, base, 'r', region['x'] + 300, region['y'] + 70)
+        after = points_for(data['edges']['ab'], base['edges']['ab'], base['nodes'])
+        self.assertEqual(after, [(x + 300, y + 70) for x, y in before])
+
+    def test_hierarchy_translation_rejects_connected_component(self):
+        from plan_layout import _move_region_tree
+        from test_precision_layout import fixture
+        data, base = fixture()
+        data['regions']['other'] = {'parent': None}
+        data['nodes']['b']['region'] = 'other'
+        with self.assertRaisesRegex(ValueError, 'cross-component'):
+            _move_region_tree(data, base, 'r', 300, 100)
+
     def test_cross_region_edges_never_use_native_router(self):
         data = {
             'project': {},
@@ -19,8 +56,8 @@ class CompoundLayoutTests(unittest.TestCase):
                       'b': {'label': 'Linear', 'region': 'second', 'kind': 'operator'}},
             'edges': {'ab': {'source': 'a', 'target': 'b', 'kind': 'tensor'}},
         }
-        with patch('plan_layout._route_edges', side_effect=AssertionError('native router called')):
-            layout = plan(data, 'test', layout_engine='elk')
+        layout = plan(data, 'test')
+        self.assertEqual(layout['layout_engine']['name'], 'compound-elk-layered')
         self.assertEqual(set(layout['edges']), {'ab'})
         self.assertEqual(layout['layout_engine']['native_routed_edge_ids'], [])
         self.assertEqual(layout['layout_engine']['elk_edge_ids'], ['ab'])
@@ -49,8 +86,7 @@ class CompoundLayoutTests(unittest.TestCase):
                            'label': '[B,S,D]'}
                       for eid, src, dst in [('ab', 'a', 'b'), ('write', 'a', 's'), ('read', 's', 'b')]},
         }
-        with patch('plan_layout._route_edges', side_effect=AssertionError('native router called')):
-            result = plan(data, 'test', layout_engine='elk')
+        result = plan(data, 'test', layout_engine='elk')
         self.assertEqual(set(result['nodes']), set(data['nodes']))
         self.assertEqual(set(result['edges']), set(data['edges']))
         self.assertTrue(all('label_position' in route for route in result['edges'].values()))

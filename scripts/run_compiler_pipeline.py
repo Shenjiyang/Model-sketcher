@@ -63,7 +63,7 @@ def main() -> int:
     parser.add_argument("--previous-layout", type=Path)
     parser.add_argument("--change-plan", type=Path)
     parser.add_argument("--require-source-files", action="store_true")
-    parser.add_argument("--layout-engine", choices=("native", "elk", "elk-compound"), default="native")
+    parser.add_argument("--layout-engine", choices=("elk", "elk-compound"), default="elk-compound")
     parser.add_argument("--semantic-view", help="Select a declared view in memory; never rewrite canonical architecture")
     args = parser.parse_args()
 

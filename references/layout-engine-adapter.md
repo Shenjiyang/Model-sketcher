@@ -4,10 +4,10 @@ Use a mature graph layout engine for node placement and ordinary orthogonal
 routing. Keep semantic view projection, Draw.io serialization, and delivery
 auditing as separate stages.
 
-The initial adapter uses vendored `elkjs` `0.12.0` and accepts a focused layout problem:
+The default adapter uses vendored `elkjs` `0.12.0` and a global compound graph:
 
 ```text
-architecture IR -> view projection -> ELK problem -> focused geometry
+architecture IR -> view projection -> ELK problem -> global geometry
                                                 -> Draw.io layout adapter
 ```
 
@@ -16,17 +16,17 @@ The current projection implementation already exposes the intended seam:
 ```text
 project_active_view(canonical_ir)
     -> projected regions/nodes/edges
-    -> one local ELK problem per visible region
-    -> macro region composition
+    -> one compound ELK problem for all visible regions and ordinary edges
+    -> optional rigid placement of disconnected hierarchy components
     -> hierarchy-arrow planning
     -> schema-v3 layout.json
 ```
 
-ELK must own every ordinary edge when selected. Do not rewrite canonical IDs,
+ELK must own every ordinary edge before recorded precision adjustments. Do not rewrite canonical IDs,
 sequence membership, region ownership, expansion attachments, or edge kinds.
-When an ordinary edge crosses region ownership, `elk` selects the compound
-backend automatically. `elk-compound` explicitly selects the same global path.
-No ordinary edge may silently fall back to the native router.
+`elk-compound` is the default and `elk` is an alias for the same global path.
+Native and hybrid compiler backends have been removed; `native` is rejected.
+No ordinary edge may silently fall back to a hand-written router.
 
 The ELK problem contains only stable node IDs, measured node boxes, directed
 edges, measured edge labels, port-side/order constraints, spacing, and optional
@@ -42,32 +42,36 @@ python scripts/plan_layout_elk.py \
   assets/elk-layout-problem-example.json /tmp/elk-layout.json
 ```
 
-ELK is an optional layout backend, not a replacement for strict audit. A
+ELK is the default layout backend, not a replacement for strict audit. A
 layout engine can minimize crossings for a chosen graph, but it cannot decide
 whether prefill, decode, and distributed variants belong in one reader-facing
 view. Perform view projection first. If a focused graph remains infeasible or
 dense, fail and split the view instead of layering project-specific coordinate
 patches.
 
-The pipeline exposes ELK as an explicit opt-in:
+The pipeline uses global ELK without an engine flag:
 
 ```bash
 python scripts/run_compiler_pipeline.py architecture.json \
-  --layout-engine elk \
   --topology-contract topology.contract.txt \
   --topology-review topology-review.json \
   --layout layout.json --drawio model.drawio
 ```
 
-For independent regions with no ordinary cross-region edges, the hybrid backend
-retains native macro composition and hierarchy-arrow geometry while ELK owns
-all ordinary edges. For connected regions, compound ELK receives the entire
+Compound ELK receives the entire
 containment tree and ordinary graph. Its nested coordinates and edge-container
 coordinates are converted to Draw.io's absolute layout coordinates. The same
 port, label, endpoint and node-penetration checks still apply.
 
-Both backends record `elk_edge_ids` and `native_routed_edge_ids` (empty) in
-layout metadata. Compound mode records `compound-elk-layered` and the exact
+Retained helpers measure text and build hollow hierarchy arrows. For execution
+components with no ordinary edges between top-level regions, hierarchy placement
+may rigidly translate whole components to make short expansion corridors; all
+internal ELK routes move with their endpoints. It may not reshape ordinary routes
+or move connected components independently. Connected global graphs retain ELK
+placement unless the validated precision pass explicitly changes it.
+
+The backend records `elk_edge_ids` and `native_routed_edge_ids` (empty) in
+layout metadata, `compound-elk-layered` and the exact
 ELK version. A generated layout is provisional, never an audit PASS.
 
 The compound backend supports global ELK followed by exact visual edits in
@@ -112,26 +116,25 @@ Hierarchy-arrow drawing, text measurement, semantic ownership and style remain
 separate responsibilities. Arbitrary nested multi-section edge output is not
 yet supported and fails explicitly rather than losing route segments.
 
-The original native default remains available while compound quality is being
-validated. On the DPSK-V4.1 111-node/140-edge diagnostic, all edges were routed
+The default engine choice does not certify diagram quality. On the earlier
+DPSK-V4.1 111-node/140-edge diagnostic, all edges were routed
 by ELK and compilation passed, but static audit still reported 122 errors
 (100 crossings). This is not a visually accepted replacement. Shared-state
 placement and global routing still need refinement; do not claim that selecting
 ELK alone solves those failures or that multi-page output is mandatory.
 
-## Merge acceptance
+## Quality acceptance
 
-Before replacing the default planner, require focused fixtures for a vertical
+Maintain focused fixtures for a vertical
 chain, fork/join plus residual skip, cache side input, packed Q/K/V split,
 multi-input attention, routed/shared MoE lanes, and one projected real-model
-region. Compare the old and ELK candidates with the same static audit. The ELK
+region. Compare refinement candidates with the same static audit. The ELK
 candidate must not introduce node overlap, direction reversal, endpoint
 detachment, avoidable main-spine bends, or additional blocking crossings.
 
-Keep the existing planner as the default while the hybrid backend is being
-validated against real projected model regions. The optional engine fails
-closed when `elkjs` is unavailable; it never silently falls back and claims
-the ELK layout was used.
+The engine fails closed when `elkjs` or Node is unavailable. Repair the bundled
+runtime or report the dependency blocker; never recreate the removed native path.
+The focused-problem CLI remains a diagnostic tool, not a separate compiler backend.
 
 ## Bounded candidate selection and refinement
 
@@ -141,11 +144,12 @@ real port-order contract exists. Sequence edges receive direction priority so
 state feedback is not treated as an equally important forward execution edge.
 The final bottom-to-top check still applies; priority is not a proof.
 
-The adapter evaluates up to five alignments and, for larger regions, two ELK
+The focused-problem diagnostic adapter evaluates up to five alignments and, for larger regions, two ELK
 node-placement strategies. Candidate scoring reuses route, sequence and density
 checks with real labels and shared-node ownership. It records every attempt
 and the selected strategy in layout engine metadata. This is a bounded search,
-not a guarantee of a zero-error result. A generated layout with residual
+not a guarantee of a zero-error result. The global compound path currently uses
+one ELK pass, not that focused candidate search. A generated layout with residual
 findings remains a draft and must fail the ordinary delivery gates.
 
 Route refinement precedes label placement. Preserve the separate label shelves

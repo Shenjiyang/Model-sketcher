@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plan deterministic branch-aware geometry, with optional incremental preservation."""
+"""Plan global ELK geometry with validated precision and hierarchy refinement."""
 
 from __future__ import annotations
 
@@ -15,17 +15,9 @@ from pathlib import Path
 
 from validate_architecture_ir import load, validate
 from view_projection import project_active_view
-from plan_layout_elk import layout_problem, problem_from_region
 
 
-NODE_H = 64.0
-CHAR_W = 9.5
-MIN_NODE_W = 128.0
-PAD_X = 38.0
 REGION_PAD = 42.0
-TITLE_H = 44.0
-ITEM_GAP = 170.0
-LANE_GAP = 86.0
 REGION_GAP = 90.0
 CANVAS_PAD = 40.0
 HIERARCHY_ARROW_THICKNESS = 96.0
@@ -105,147 +97,6 @@ def region_title_layout(label: str, width: float, font_size: float = 20.0) -> di
             'header_height': round(8.0 + 1.3 * font_size * len(lines) + 12.0, 2)}
 
 
-def _detail_grid(region: dict, owned: list[str], nodes: dict, edges: dict, sizes: dict) -> tuple[dict, float, float]:
-    """Assign DAG depth bottom-to-top and declared sequences to horizontal lanes."""
-    lane_candidates: dict[str, list[int]] = defaultdict(list)
-    for lane_index, sequence in enumerate(region.get("operator_sequences", [])):
-        for node_id in sequence["nodes"]:
-            lane_candidates[node_id].append(lane_index)
-    lane = {node_id: min(lane_candidates.get(node_id, [0])) for node_id in owned}
-    successors: dict[str, list[str]] = {item: [] for item in owned}
-    indegree = {item: 0 for item in owned}
-    owned_set = set(owned)
-    for edge in edges.values():
-        source, target = edge["source"], edge["target"]
-        if source in owned_set and target in owned_set:
-            successors[source].append(target)
-            indegree[target] += 1
-    queue = deque(sorted((item for item in owned if indegree[item] == 0), key=lambda item: (nodes[item].get("order", 0), item)))
-    depth = {item: 0 for item in owned}
-    visited: list[str] = []
-    while queue:
-        source = queue.popleft()
-        visited.append(source)
-        for target in sorted(successors[source], key=lambda item: (nodes[item].get("order", 0), item)):
-            depth[target] = max(depth[target], depth[source] + 1)
-            indegree[target] -= 1
-            if indegree[target] == 0:
-                queue.append(target)
-    if len(visited) != len(owned):
-        depth = {item: index for index, item in enumerate(owned)}
-
-    depths, lanes = sorted(set(depth.values())), sorted(set(lane.values()))
-    lane_width = {column: max(sizes[item][0] for item in owned if lane[item] == column) for column in lanes}
-    depth_height = {row: max(sizes[item][1] for item in owned if depth[item] == row) for row in depths}
-    lane_x: dict[int, float] = {}
-    cursor = 0.0
-    for column in lanes:
-        lane_x[column] = cursor
-        cursor += lane_width[column] + LANE_GAP
-    inner_w = cursor - LANE_GAP if lanes else MIN_NODE_W
-    depth_y: dict[int, float] = {}
-    cursor = 0.0
-    for row in reversed(depths):
-        depth_y[row] = cursor
-        cursor += depth_height[row] + ITEM_GAP
-    inner_h = cursor - ITEM_GAP if depths else NODE_H
-    offsets = {
-        item: {
-            "x": lane_x[lane[item]] + (lane_width[lane[item]] - sizes[item][0]) / 2,
-            "y": depth_y[depth[item]] + (depth_height[depth[item]] - sizes[item][1]) / 2,
-        }
-        for item in owned
-    }
-    return offsets, inner_w, inner_h
-
-
-def _elk_detail_grid(data: dict, region_id: str, sizes: dict) -> tuple[dict, float, float, dict]:
-    problem = problem_from_region(data, region_id, sizes)
-    result = layout_problem(problem, Path(__file__).with_name("elk_runner.cjs"), "node")
-    boxes = result["nodes"]
-    content = [*boxes.values(), *result.get("edge_label_boxes", {}).values()]
-    content.extend({"x": x, "y": y, "w": 0, "h": 0}
-                   for route in result["edges"].values() for x, y in route["waypoints"])
-    min_x = min(box["x"] for box in content)
-    min_y = min(box["y"] for box in content)
-    offsets = {
-        node_id: {"x": box["x"] - min_x, "y": box["y"] - min_y}
-        for node_id, box in boxes.items()
-    }
-    inner_w = max(box["x"] + box["w"] for box in content) - min_x
-    inner_h = max(box["y"] + box["h"] for box in content) - min_y
-    return offsets, inner_w, inner_h, result
-
-
-def _port_xy(box: dict, port: dict) -> tuple[float, float]:
-    side, position = port["side"], port["position"]
-    if side == "east":
-        return box["x"] + box["w"], box["y"] + box["h"] * position
-    if side == "west":
-        return box["x"], box["y"] + box["h"] * position
-    if side == "north":
-        return box["x"] + box["w"] * position, box["y"]
-    return box["x"] + box["w"] * position, box["y"] + box["h"]
-
-
-def _route_edges(edges: dict, boxes: dict) -> dict:
-    choices: dict[str, tuple[str, str]] = {}
-    for edge_id, edge in sorted(edges.items()):
-        source, target = boxes[edge["source"]], boxes[edge["target"]]
-        source_cy, target_cy = source["y"] + source["h"] / 2, target["y"] + target["h"] / 2
-        if target["x"] >= source["x"] + source["w"] + 20:
-            if target_cy > source_cy + NODE_H:
-                choices[edge_id] = ("south", "west")
-            elif target_cy < source_cy - NODE_H:
-                choices[edge_id] = ("east", "south")
-            else:
-                choices[edge_id] = ("east", "west")
-        elif target["y"] >= source["y"] + source["h"] + 20:
-            choices[edge_id] = ("south", "north")
-        else:
-            choices[edge_id] = ("north", "south")
-
-    source_groups: dict[tuple[str, str], list[str]] = defaultdict(list)
-    target_groups: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for edge_id, edge in edges.items():
-        source_side, target_side = choices[edge_id]
-        source_groups[(edge["source"], source_side)].append(edge_id)
-        target_groups[(edge["target"], target_side)].append(edge_id)
-    source_ports: dict[str, dict] = {}
-    target_ports: dict[str, dict] = {}
-    for (_, side), ids in source_groups.items():
-        for index, edge_id in enumerate(sorted(ids)):
-            source_ports[edge_id] = {"side": side, "position": round((index + 1) / (len(ids) + 1), 4)}
-    for (_, side), ids in target_groups.items():
-        for index, edge_id in enumerate(sorted(ids)):
-            target_ports[edge_id] = {"side": side, "position": round((index + 1) / (len(ids) + 1), 4)}
-
-    routes: dict[str, dict] = {}
-    for edge_id, edge in sorted(edges.items()):
-        source, target = boxes[edge["source"]], boxes[edge["target"]]
-        source_port, target_port = source_ports[edge_id], target_ports[edge_id]
-        sx, sy = _port_xy(source, source_port)
-        tx, ty = _port_xy(target, target_port)
-        source_side, target_side = source_port["side"], target_port["side"]
-        if source_side == "east" and target_side == "west":
-            if math.isclose(sy, ty, abs_tol=1.0):
-                points = []
-            else:
-                rank = sorted(source_groups[(edge["source"], source_side)]).index(edge_id)
-                mid = min(tx - 24.0, sx + 28.0 + 12.0 * rank)
-                points = [[round(mid, 2), round(sy, 2)], [round(mid, 2), round(ty, 2)]]
-        elif source_side == "south" and target_side == "west":
-            corridor_y = max(sy + 28.0, ty)
-            points = [[round(sx, 2), round(corridor_y, 2)], [round(tx - 24.0, 2), round(corridor_y, 2)], [round(tx - 24.0, 2), round(ty, 2)]]
-        elif source_side == "east" and target_side == "south":
-            rank = sorted(source_groups[(edge["source"], source_side)]).index(edge_id)
-            corridor_x, corridor_y = sx + 28.0 + rank * 16.0, ty + 28.0 + rank * 16.0
-            points = [[round(corridor_x, 2), round(sy, 2)], [round(corridor_x, 2), round(corridor_y, 2)], [round(tx, 2), round(corridor_y, 2)]]
-        else:
-            mid_y = round((sy + ty) / 2, 2)
-            points = [[round(sx, 2), mid_y], [round(tx, 2), mid_y]]
-        routes[edge_id] = {"source_port": source_port, "target_port": target_port, "waypoints": points}
-    return routes
 
 
 def _interval_overlap(first_lo: float, first_hi: float, second_lo: float, second_hi: float) -> tuple[float, float] | None:
@@ -268,6 +119,14 @@ def _move_region_tree(data: dict, layout: dict, root_id: str, x: float, y: float
         region_id for region_id in regions
         if _root_region(region_id, regions) == root_id
     }
+    for eid, route in layout.get('edges', {}).items():
+        edge = data['edges'][eid]
+        source_moved = data['nodes'][edge['source']]['region'] in moved_regions
+        target_moved = data['nodes'][edge['target']]['region'] in moved_regions
+        if source_moved != target_moved:
+            raise ValueError('hierarchy translation cannot alter cross-component ordinary routes')
+        if source_moved:
+            route['waypoints'] = [[px + dx, py + dy] for px, py in route['waypoints']]
     for region_id in moved_regions:
         layout["regions"][region_id]["x"] += dx
         layout["regions"][region_id]["y"] += dy
@@ -383,6 +242,13 @@ def auto_place_expansion_regions(data: dict, layout: dict) -> None:
         return
 
     regions = data["regions"]
+    # Only disconnected execution components may be translated for hollow arrows.
+    # Connected global geometry belongs to ELK or the validated precision pass.
+    if any(edge.get('kind') != 'expand' and
+           _root_region(data['nodes'][edge['source']]['region'], regions) !=
+           _root_region(data['nodes'][edge['target']]['region'], regions)
+           for edge in data.get('edges', {}).values()):
+        return
     top_regions = [region_id for region_id, region in regions.items() if region.get("parent") is None]
     expand_edges = [
         (edge_id, edge) for edge_id, edge in sorted(data.get("edges", {}).items())
@@ -687,227 +553,24 @@ def _merge_fields(original: dict, override: dict) -> dict:
     return result
 
 
-def _apply_incremental(layout: dict, previous: dict | None, state: dict | None, node_regions: dict[str, str]) -> None:
-    if not previous or not state:
-        return
-    change_set = state.get("change_set") or {}
-    affected = set(change_set.get("affected_regions", layout["regions"]))
-    policies = state.get("region_policies", {})
-    preserved: list[str] = []
-    for region_id, box in list(layout["regions"].items()):
-        policy_value = policies.get(region_id, "adaptive")
-        policy = policy_value.get("policy", "adaptive") if isinstance(policy_value, dict) else policy_value
-        old_region = previous.get("regions", {}).get(region_id)
-        if old_region is None:
-            continue
-        if policy == "frozen" or region_id not in affected:
-            layout["regions"][region_id] = dict(old_region)
-            for node_id, owner in node_regions.items():
-                if owner == region_id and node_id in previous.get("nodes", {}) and node_id in layout["nodes"]:
-                    layout["nodes"][node_id] = dict(previous["nodes"][node_id])
-            preserved.append(region_id)
-        elif policy == "preserve":
-            dx, dy = old_region["x"] - box["x"], old_region["y"] - box["y"]
-            layout["regions"][region_id]["x"], layout["regions"][region_id]["y"] = old_region["x"], old_region["y"]
-            for node_id, owner in node_regions.items():
-                if owner == region_id and node_id in layout["nodes"]:
-                    layout["nodes"][node_id]["x"] += dx
-                    layout["nodes"][node_id]["y"] += dy
-    for section in ("regions", "nodes"):
-        for item_id, override in state.get("layout_overrides", {}).get(section, {}).items():
-            if item_id in layout[section] and isinstance(override, dict):
-                layout[section][item_id] = _merge_fields(layout[section][item_id], override)
-    layout["incremental"] = {"mode": change_set.get("mode", "unspecified"), "preserved_regions": sorted(preserved)}
-
-
 def plan(
     data: dict,
     architecture_sha256: str,
     previous_layout: dict | None = None,
     state: dict | None = None,
     defer_hierarchy_arrows: bool = False,
-    layout_engine: str = "native",
+    layout_engine: str = "elk-compound",
 ) -> dict:
-    if layout_engine not in {"native", "elk", "elk-compound"}:
-        raise ValueError(f"unknown layout engine {layout_engine!r}")
-    data = project_active_view(data)
-    needs_compound = any(
-        edge.get('kind') != 'expand' and (
-            data['nodes'][edge['source']]['region'] != data['nodes'][edge['target']]['region']
-            or not data['regions'][data['nodes'][edge['source']]['region']].get('operator_sequences')
-        ) for edge in data.get('edges', {}).values()
+    if layout_engine not in {"elk", "elk-compound"}:
+        raise ValueError(
+            f"unsupported layout engine {layout_engine!r}; native has been removed; "
+            "use global ELK (elk-compound)"
+        )
+    from compound_layout import plan_compound
+    return plan_compound(
+        project_active_view(data), architecture_sha256, state,
+        defer_hierarchy_arrows, previous_layout,
     )
-    if layout_engine == 'elk-compound' or (layout_engine == 'elk' and needs_compound):
-        from compound_layout import plan_compound
-        return plan_compound(data, architecture_sha256, state, defer_hierarchy_arrows, previous_layout)
-    regions, nodes, edges = data["regions"], data["nodes"], data.get("edges", {})
-    children: dict[str | None, list[str]] = {None: []}
-    for region_id, region in regions.items():
-        children.setdefault(region.get("parent"), []).append(region_id)
-        children.setdefault(region_id, [])
-    for ids in children.values():
-        ids.sort(key=lambda item: (regions[item].get("order", 0), item))
-    direct_nodes: dict[str, list[str]] = {item: [] for item in regions}
-    for node_id, node in nodes.items():
-        direct_nodes[node["region"]].append(node_id)
-    for ids in direct_nodes.values():
-        ids.sort(key=lambda item: (nodes[item].get("order", 0), item))
-
-    ordinary_font = data.get("project", {}).get("typography", {}).get("ordinary_node_font", 18)
-    region_pad = max(REGION_PAD, float(ordinary_font) * 2.0)
-    node_sizes = {item: node_size(node, ordinary_font) for item, node in nodes.items()}
-    sizes: dict[str, tuple[float, float]] = {}
-    grids: dict[str, dict] = {}
-    grid_extents: dict[str, tuple[float, float]] = {}
-    node_extents: dict[str, tuple[float, float]] = {}
-    elk_results: dict[str, dict] = {}
-    region_titles: dict[str, dict] = {}
-    title_font = data.get('project', {}).get('typography', {}).get('region_title_font', 20)
-
-    def grouped_extent(items: list[tuple[float, float]], direction: str) -> tuple[float, float]:
-        if not items:
-            return 0.0, 0.0
-        if direction == "row":
-            return sum(item[0] for item in items) + ITEM_GAP * (len(items) - 1), max(item[1] for item in items)
-        return max(item[0] for item in items), sum(item[1] for item in items) + ITEM_GAP * (len(items) - 1)
-
-    def measure(region_id: str) -> tuple[float, float]:
-        child_sizes = [measure(child) for child in children[region_id]]
-        region = regions[region_id]
-        if region.get("operator_sequences") and direct_nodes[region_id]:
-            if layout_engine == "elk":
-                offsets, inner_w, inner_h, elk_results[region_id] = _elk_detail_grid(
-                    data, region_id, node_sizes
-                )
-            else:
-                offsets, inner_w, inner_h = _detail_grid(
-                    region, direct_nodes[region_id], nodes, edges, node_sizes
-                )
-            grids[region_id], grid_extents[region_id] = offsets, (inner_w, inner_h)
-        else:
-            inner_w, inner_h = grouped_extent(
-                [node_sizes[item] for item in direct_nodes[region_id]], "column"
-            )
-            node_extents[region_id] = (inner_w, inner_h)
-        child_w, child_h = grouped_extent(child_sizes, region.get("child_direction", "row"))
-        if child_sizes:
-            inner_w = max(inner_w, child_w)
-            inner_h = inner_h + (REGION_GAP if direct_nodes[region_id] else 0.0) + child_h
-        if not direct_nodes[region_id] and not child_sizes:
-            inner_w, inner_h = MIN_NODE_W, NODE_H
-        width = inner_w + region_pad * 2
-        region_titles[region_id] = region_title_layout(region['label'], width, title_font)
-        sizes[region_id] = (width, inner_h + region_pad * 2 + region_titles[region_id]['header_height'])
-        return sizes[region_id]
-
-    for root in children[None]:
-        measure(root)
-    region_boxes: dict[str, dict] = {}
-    node_boxes: dict[str, dict] = {}
-
-    def place(region_id: str, x: float, y: float) -> None:
-        width, height = sizes[region_id]
-        region_boxes[region_id] = {"x": x, "y": y, "w": width, "h": height}
-        origin_x, origin_y = x + region_pad, y + region_pad + region_titles[region_id]['header_height']
-        if region_id in grids:
-            for node_id, offset in grids[region_id].items():
-                width_n, height_n = node_sizes[node_id]
-                node_boxes[node_id] = {"x": origin_x + offset["x"], "y": origin_y + offset["y"], "w": width_n, "h": height_n}
-            node_height = grid_extents[region_id][1]
-        else:
-            cursor_y = origin_y
-            for node_id in direct_nodes[region_id]:
-                width_n, height_n = node_sizes[node_id]
-                node_boxes[node_id] = {"x": origin_x, "y": cursor_y, "w": width_n, "h": height_n}
-                cursor_y += height_n + ITEM_GAP
-            node_height = node_extents.get(region_id, (0.0, 0.0))[1]
-
-        child_x = origin_x
-        child_y = origin_y + node_height + (REGION_GAP if direct_nodes[region_id] and children[region_id] else 0.0)
-        child_direction = regions[region_id].get("child_direction", "row")
-        for child in children[region_id]:
-            place(child, child_x, child_y)
-            if child_direction == "row":
-                child_x += sizes[child][0] + ITEM_GAP
-            else:
-                child_y += sizes[child][1] + ITEM_GAP
-
-    root_y = CANVAS_PAD
-    for root in children[None]:
-        place(root, CANVAS_PAD, root_y)
-        root_y += sizes[root][1] + REGION_GAP
-
-    layout = {
-        "schema_version": 3,
-        "architecture_sha256": architecture_sha256,
-        **({"semantic_view": data["project"]["semantic_view"]}
-           if data.get("project", {}).get("semantic_view") else {}),
-        "canvas": {},
-        "regions": region_boxes,
-        "region_titles": region_titles,
-        "nodes": node_boxes,
-        "edges": {},
-        "hierarchy_arrows": {},
-        "hierarchy_attachments": {},
-    }
-    auto_place_expansion_regions(data, layout)
-    _apply_incremental(layout, previous_layout, state, {item: node["region"] for item, node in nodes.items()})
-    ordinary_edges = {edge_id: edge for edge_id, edge in edges.items() if edge.get("kind") != "expand"}
-    layout["edges"] = _route_edges(ordinary_edges, layout["nodes"]) if layout_engine == 'native' else {}
-    if layout_engine == "elk":
-        for region_id, result in elk_results.items():
-            if not result["edges"]:
-                continue
-            translations = {
-                (
-                    round(layout["nodes"][node_id]["x"] - result["nodes"][node_id]["x"], 6),
-                    round(layout["nodes"][node_id]["y"] - result["nodes"][node_id]["y"], 6),
-                )
-                for node_id in result["nodes"]
-            }
-            if len(translations) != 1:
-                raise ValueError(
-                    f"ELK region {region_id} was deformed by per-node incremental overrides; "
-                    "reflow the region or remove those overrides"
-                )
-            dx, dy = next(iter(translations))
-            for edge_id, route in result["edges"].items():
-                translated = deepcopy(route)
-                translated["waypoints"] = [
-                    [round(x + dx, 2), round(y + dy, 2)]
-                    for x, y in route["waypoints"]
-                ]
-                layout["edges"][edge_id] = translated
-        if set(layout['edges']) != set(ordinary_edges):
-            raise ValueError('ELK coverage incomplete; refusing native routing fallback')
-    if state:
-        for edge_id, override in state.get("layout_overrides", {}).get("edges", {}).items():
-            if edge_id in layout["edges"] and isinstance(override, dict):
-                layout["edges"][edge_id] = _merge_fields(layout["edges"][edge_id], override)
-    if not defer_hierarchy_arrows:
-        layout["hierarchy_arrows"] = plan_hierarchy_arrows(data, layout)
-        apply_hierarchy_arrow_overrides(layout, state)
-    max_right = max([box["x"] + box["w"] for box in layout["regions"].values()] + [800.0])
-    max_bottom = max([box["y"] + box["h"] for box in layout["regions"].values()] + [600.0])
-    layout["canvas"] = {"width": math.ceil(max_right + CANVAS_PAD), "height": math.ceil(max_bottom + CANVAS_PAD)}
-    if layout_engine == "elk":
-        versions = {result["engine"]["elkjsVersion"] for result in elk_results.values()}
-        if len(versions) != 1:
-            raise ValueError(f"ELK regions reported inconsistent engine versions: {sorted(versions)}")
-        layout["layout_engine"] = {
-            "name": "hybrid-elk-layered",
-            "elkjs_version": next(iter(versions)),
-            "elk_region_ids": sorted(elk_results),
-            "macro_engine": "model-sketcher-native",
-            "elk_edge_ids": sorted(layout['edges']),
-            "native_routed_edge_ids": [],
-            "region_candidate_selection": {
-                region_id: result["engine"].get("candidate_selection", {})
-                for region_id, result in elk_results.items()
-            },
-        }
-    from junction_routes import normalize_junctions
-    return normalize_junctions(data, layout)
 
 
 def main() -> int:
@@ -917,7 +580,7 @@ def main() -> int:
     parser.add_argument("output", type=Path)
     parser.add_argument("--previous-layout", type=Path)
     parser.add_argument("--state", type=Path)
-    parser.add_argument("--layout-engine", choices=("native", "elk", "elk-compound"), default="native")
+    parser.add_argument("--layout-engine", choices=("elk", "elk-compound"), default="elk-compound")
     parser.add_argument(
         "--defer-hierarchy-arrows",
         action="store_true",
@@ -942,7 +605,7 @@ def main() -> int:
             defer_hierarchy_arrows=args.defer_hierarchy_arrows,
             layout_engine=args.layout_engine,
         )
-    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
         print(f"layout: FAIL ({error})")
         return 1
     args.output.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")

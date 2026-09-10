@@ -220,7 +220,7 @@ def build_manifest(data: dict, layout: dict | None = None) -> dict:
         "generated_from": "architecture.json; merge workflow_contract and human review records before final delivery",
         "defaults": {
             "layout_engine": (
-                layout.get("layout_engine", {"name": "model-sketcher-native"})
+                layout.get("layout_engine", {"name": "unrecorded-legacy-layout"})
                 if layout is not None else {"name": "unmaterialized"}
             ),
             "require_fixed_ports": True,
