@@ -19,7 +19,7 @@ from view_projection import project_active_view
 
 
 class ElkLabelOffsetTests(unittest.TestCase):
-    @unittest.skipUnless(os.environ.get("V4_RUN_DRAWIO_RENDER_TESTS") == "1",
+    @unittest.skipUnless(os.environ.get("MODEL_SKETCHER_RUN_DRAWIO_RENDER_TESTS") == "1",
                          "Official renderer integration is opt-in")
     def test_official_drawio_negative_y_moves_upward_edge_label_right(self):
         with tempfile.TemporaryDirectory(prefix="elk-label-render-test-") as temp:

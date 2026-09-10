@@ -2,7 +2,7 @@
 
 `model-sketcher` is a Codex skill for producing dense, editable model and code-path architecture diagrams. It treats diagrams as compiled engineering artifacts: source evidence becomes a semantic architecture IR, the IR becomes a reviewed topology contract, and deterministic layout produces an editable Draw.io file.
 
-The skill is designed for source-level model analysis rather than generic presentation graphics. Its compact technical-analysis visual language began as a V4-inspired calibration, but the architecture, source code, framework, and model family are all open-ended. It can produce a hierarchy master, a continuous end-to-end dataflow view, or a paired delivery derived from the same canonical model.
+The skill is designed for source-level model analysis rather than generic presentation graphics. Its compact technical-analysis visual language is model- and framework-agnostic. It can produce a hierarchy master, a continuous end-to-end dataflow view, or a paired delivery derived from the same canonical model.
 
 ## What it provides
 

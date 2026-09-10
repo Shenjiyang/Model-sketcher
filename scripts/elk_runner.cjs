@@ -44,7 +44,7 @@ async function main() {
   const graph = JSON.parse(fs.readFileSync(inputPath, "utf8"));
   const {ELK, version} = loadElk();
   const result = await new ELK().layout(graph);
-  result._v4LayoutEngine = {name: "elk-layered", elkjsVersion: version};
+  result._modelSketcherLayoutEngine = {name: "elk-layered", elkjsVersion: version};
   fs.writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
 }
 

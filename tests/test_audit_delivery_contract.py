@@ -71,7 +71,7 @@ class DeliveryContractTests(unittest.TestCase):
                 "require_registered_edge_label_positions": True,
                 "expected_edge_label_positions": {},
                 "require_semantic_style_contract": True,
-                "semantic_style_contract": {"profile": "dpsk-v4-original"},
+                "semantic_style_contract": {"profile": "model-sketcher-original"},
                 "require_semantic_glyph_contract": True,
                 "require_semantic_coverage": True,
                 "require_compact_execution_geometry": True,

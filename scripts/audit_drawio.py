@@ -462,24 +462,24 @@ class PageAudit:
         contract = self.config.get("semantic_style_contract")
         if contract is None:
             if self.config.get("require_semantic_style_contract") is True:
-                self.fail("required DPSK V4 semantic-style contract is missing")
+                self.fail("required Model Sketcher semantic-style contract is missing")
             return
         if not isinstance(contract, dict):
             self.fail("semantic_style_contract must be an object")
             return
-        if contract.get("profile") != "dpsk-v4-original":
-            self.fail("semantic_style_contract.profile must be 'dpsk-v4-original'")
+        if contract.get("profile") != "model-sketcher-original":
+            self.fail("semantic_style_contract.profile must be 'model-sketcher-original'")
         if contract.get("palette") != SEMANTIC_PALETTE:
-            self.fail("semantic_style_contract palette differs from the canonical DPSK V4 palette")
+            self.fail("semantic_style_contract palette differs from the canonical Model Sketcher palette")
         if contract.get("tp_partition_modifier") != TP_PARTITION_MODIFIER:
-            self.fail("semantic_style_contract TP modifier differs from the canonical DPSK V4 style")
+            self.fail("semantic_style_contract TP modifier differs from the canonical Model Sketcher style")
         if self.config.get("require_semantic_glyph_contract") is True and contract.get("glyphs") != SEMANTIC_GLYPHS:
             self.fail("semantic_style_contract glyph registry differs from the canonical glyph contract")
 
         canonical_entries = list(SEMANTIC_PALETTE)[:4] + ["tp-partition"] + list(SEMANTIC_PALETTE)[4:]
         expected_legend = {entry: f"legend:{entry}" for entry in canonical_entries}
         if contract.get("legend_title") != "legend:title" or contract.get("legend_entries") != expected_legend:
-            self.fail("semantic Legend must contain the complete canonical nine-entry DPSK V4 key")
+            self.fail("semantic Legend must contain the complete canonical nine-entry Model Sketcher key")
         expected_legend_ids = {"legend:title", *expected_legend.values()}
         actual_legend_ids = {cell_id for cell_id in self.by_id if cell_id.startswith("legend:")}
         if actual_legend_ids != expected_legend_ids:

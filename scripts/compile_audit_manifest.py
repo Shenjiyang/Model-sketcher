@@ -220,7 +220,7 @@ def build_manifest(data: dict, layout: dict | None = None) -> dict:
         "generated_from": "architecture.json; merge workflow_contract and human review records before final delivery",
         "defaults": {
             "layout_engine": (
-                layout.get("layout_engine", {"name": "v4-native"})
+                layout.get("layout_engine", {"name": "model-sketcher-native"})
                 if layout is not None else {"name": "unmaterialized"}
             ),
             "require_fixed_ports": True,
@@ -273,7 +273,7 @@ def build_manifest(data: dict, layout: dict | None = None) -> dict:
             },
             "node_semantics": node_semantics,
             "semantic_style_contract": {
-                "profile": "dpsk-v4-original",
+                "profile": "model-sketcher-original",
                 "palette": SEMANTIC_PALETTE,
                 "tp_partition_modifier": TP_PARTITION_MODIFIER,
                 "glyphs": SEMANTIC_GLYPHS,

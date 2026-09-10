@@ -1,4 +1,4 @@
-"""Canonical DeepSeek V4 semantic palette and node-class resolution."""
+"""Canonical Model Sketcher semantic palette and node-class resolution."""
 
 from __future__ import annotations
 

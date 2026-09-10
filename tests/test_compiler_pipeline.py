@@ -449,7 +449,7 @@ class CompilerPipelineTest(unittest.TestCase):
                 "name": "hybrid-elk-layered",
                 "elkjs_version": "0.12.0",
                 "elk_region_ids": ["model"],
-                "macro_engine": "v4-native",
+                "macro_engine": "model-sketcher-native",
             },
         )
         self.assertEqual(layout["edges"]["a_b"]["waypoints"], [])

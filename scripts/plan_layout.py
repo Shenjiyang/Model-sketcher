@@ -887,7 +887,7 @@ def plan(
             "name": "hybrid-elk-layered",
             "elkjs_version": next(iter(versions)),
             "elk_region_ids": sorted(elk_results),
-            "macro_engine": "v4-native",
+            "macro_engine": "model-sketcher-native",
             "region_candidate_selection": {
                 region_id: result["engine"].get("candidate_selection", {})
                 for region_id, result in elk_results.items()

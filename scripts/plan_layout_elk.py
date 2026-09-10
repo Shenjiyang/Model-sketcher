@@ -520,7 +520,7 @@ def _label_position(
 
 
 def convert_result(problem: dict, result: dict) -> dict:
-    engine = result.get("_v4LayoutEngine")
+    engine = result.get("_modelSketcherLayoutEngine")
     if not isinstance(engine, dict) or engine.get("name") != "elk-layered" or not engine.get("elkjsVersion"):
         raise ValueError("ELK result is missing reproducible engine/version metadata")
     padding = float(problem.get("canvas_padding", 24))
@@ -657,7 +657,7 @@ def convert_result(problem: dict, result: dict) -> dict:
 
 def _layout_once(problem: dict, runner: Path, node: str) -> dict:
     graph = elk_graph(problem)
-    with tempfile.TemporaryDirectory(prefix="v4-elk-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="model-sketcher-elk-") as temp_dir:
         temp = Path(temp_dir)
         input_path = temp / "input.json"
         result_path = temp / "result.json"

@@ -210,7 +210,7 @@ def legend_origin(layout: dict) -> tuple[float, float]:
 
 
 def add_semantic_legend(root: ET.Element, layout: dict, font_size: int) -> None:
-    """Add one fixed two-row Legend using the original DPSK V4 palette."""
+    """Add one fixed two-row Legend using the Model Sketcher palette."""
     origin_x, origin_y = legend_origin(layout)
     title = ET.SubElement(root, "mxCell", {
         "id": "legend:title", "value": "Legend / 图例",
