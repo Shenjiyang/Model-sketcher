@@ -99,20 +99,37 @@ def flatten_result(result, node_ids):
     return {**result, 'children': nodes, 'edges': edges}, regions
 
 
-def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=False):
+def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=False, previous_layout=None):
     from plan_layout import node_size, region_title_layout, plan_hierarchy_arrows
     from plan_layout import apply_hierarchy_arrow_overrides
     from junction_routes import normalize_junctions
     overrides = (state or {}).get('layout_overrides', {})
-    if any(overrides.get(key) for key in ('nodes', 'regions', 'edges')):
-        raise ValueError('compound ELK requires reflow: stale coordinate/route overrides must be removed')
-    font = data['project'].get('typography', {}).get('ordinary_node_font', 18)
-    title_font = data['project'].get('typography', {}).get('region_title_font', 20)
-    sizes = {nid: node_size(node, font) for nid, node in data['nodes'].items()}
+    from precision_layout import apply_precision
     policies = (state or {}).get('region_policies', {})
     if any(policy.get('policy') in {'preserve', 'frozen'} if isinstance(policy, dict)
            else policy in {'preserve', 'frozen'} for policy in policies.values()):
         raise ValueError('compound ELK requires adaptive regions; cannot silently ignore preserved/frozen geometry')
+    if not isinstance(overrides, dict):
+        raise ValueError('invalid precision override collections')
+    for group in ('nodes', 'regions', 'edges'):
+        if not isinstance(overrides.get(group, {}), dict) or set(overrides.get(group, {})) - set(data.get(group, {})):
+            raise ValueError(f'unknown precision {group} IDs')
+    if previous_layout is not None:
+        if (previous_layout.get('architecture_sha256') != architecture_sha256 or
+            previous_layout.get('semantic_view') != data['project'].get('semantic_view') or
+            set(previous_layout.get('nodes', {})) != set(data['nodes']) or
+            set(previous_layout.get('regions', {})) != set(data['regions']) or
+            set(previous_layout.get('edges', {})) != {
+                eid for eid, edge in data['edges'].items() if edge.get('kind') != 'expand'}):
+            raise ValueError('precision base layout does not match current architecture/view; regenerate ELK base')
+        layout = apply_precision(data, previous_layout, overrides)
+        if not defer_hierarchy_arrows:
+            layout['hierarchy_arrows'] = plan_hierarchy_arrows(data, layout)
+            apply_hierarchy_arrow_overrides(layout, state)
+        return layout
+    font = data['project'].get('typography', {}).get('ordinary_node_font', 18)
+    title_font = data['project'].get('typography', {}).get('region_title_font', 20)
+    sizes = {nid: node_size(node, font) for nid, node in data['nodes'].items()}
     problem, graph = build_graph(data, sizes, title_font, (state or {}).get('layout_hints'))
     with tempfile.TemporaryDirectory(prefix='model-sketcher-compound-') as folder:
         src, dst = Path(folder) / 'input.json', Path(folder) / 'output.json'
@@ -142,6 +159,8 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
     }
     if data['project'].get('semantic_view'):
         layout['semantic_view'] = data['project']['semantic_view']
+    if any(overrides.get(group) for group in ('nodes', 'regions', 'edges')):
+        layout = apply_precision(data, layout, overrides)
     if not defer_hierarchy_arrows:
         layout['hierarchy_arrows'] = plan_hierarchy_arrows(data, layout)
         apply_hierarchy_arrow_overrides(layout, state)

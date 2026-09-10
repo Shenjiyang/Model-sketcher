@@ -77,7 +77,7 @@ class CompoundLayoutTests(unittest.TestCase):
         self.assertEqual(regions['r']['x'], 50)
 
     def test_stale_coordinate_overrides_are_rejected(self):
-        with self.assertRaisesRegex(ValueError, 'stale coordinate'):
+        with self.assertRaisesRegex(ValueError, 'unknown precision'):
             plan({'project': {}, 'nodes': {}, 'edges': {}, 'regions': {}}, 'test',
                  state={'layout_overrides': {'nodes': {'a': {'x': 4}}}},
                  layout_engine='elk-compound')

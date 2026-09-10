@@ -739,9 +739,7 @@ def plan(
     )
     if layout_engine == 'elk-compound' or (layout_engine == 'elk' and needs_compound):
         from compound_layout import plan_compound
-        if previous_layout is not None:
-            raise ValueError('compound ELK currently requires full reflow; previous-layout preservation is unsupported')
-        return plan_compound(data, architecture_sha256, state, defer_hierarchy_arrows)
+        return plan_compound(data, architecture_sha256, state, defer_hierarchy_arrows, previous_layout)
     regions, nodes, edges = data["regions"], data["nodes"], data.get("edges", {})
     children: dict[str | None, list[str]] = {None: []}
     for region_id, region in regions.items():

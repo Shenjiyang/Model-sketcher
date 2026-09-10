@@ -86,8 +86,11 @@ The pipeline deliberately stops at the topology-review gate when a valid indepen
 
 `--layout-engine elk` automatically uses compound ELK when ordinary edges cross
 regions; `--layout-engine elk-compound` requests it explicitly. It does not fall
-back to native routing. Compound layout currently requires full reflow and is
-still undergoing real-model quality validation; successful generation is not
+back to native routing. Stable-ID state overrides allow exact node/region
+positions, explicit routes and label adjustments after global ELK. A matching
+`--previous-layout` supports refinement without rerunning ELK; attached routes
+are reconciled or rejected explicitly, never silently left disconnected.
+Compound layout is still undergoing real-model quality validation; successful generation is not
 visual acceptance. See the layout adapter reference for limitations and results.
 
 ## Repository layout

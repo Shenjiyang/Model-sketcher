@@ -70,8 +70,41 @@ Both backends record `elk_edge_ids` and `native_routed_edge_ids` (empty) in
 layout metadata. Compound mode records `compound-elk-layered` and the exact
 ELK version. A generated layout is provisional, never an audit PASS.
 
-The compound backend currently requires full reflow: it rejects previous-layout
-preservation, frozen/preserved region policies, and coordinate/route overrides.
+The compound backend supports global ELK followed by exact visual edits in
+project-state `layout_overrides`. These are deterministic postprocessing edits,
+not a promise that ELK can solve arbitrary fixed-coordinate constraints.
+`nodes` and `regions` accept absolute nonnegative `x`/`y` keyed by stable ID;
+sizes remain content-derived. Moving a region translates its descendants.
+`edges` accept explicit normalized `source_port`/`target_port`, orthogonal
+`waypoints`, and relative `label_position` (`x` in [-1,1], `y` in [-160,160]).
+For example:
+
+```json
+{"layout_overrides": {"nodes": {"attention": {"x": 800}},
+ "edges": {"output": {"label_position": {"x": 0, "y": -12}}}}}
+```
+
+Use the strict pipeline's `--state` with `--layout-engine elk-compound`.
+Add `--previous-layout` and `--previous-architecture` to the pipeline to refine
+an existing base without rerunning ELK; its
+architecture digest, semantic view and visible IDs must match exactly.
+Retain the state file and base for reproducibility. Absolute edits reapply on
+rebuild; if a new ELK base makes them invalid, repair them rather than discarding
+them. Frozen/preserved region policies remain unsupported and fail explicitly.
+
+The adjustment pass reconnects moved endpoints by orthogonal route stretching,
+or a bounded upward Z-route where possible. Otherwise supply explicit ports and
+waypoints or revise placement. It checks all ordinary routes for node penetration,
+including unrelated edges affected by a moved obstacle; it is not a global router.
+Region bounds, titles, canvas and hierarchy-arrow geometry are regenerated.
+Relative edge labels follow their routes; label collisions, node overlaps,
+crossings and overall readability still require normal strict and visual audits.
+Changed routes lose stale line-jump declarations and are recorded separately as
+`precision_adjusted_edge_ids`; `elk_edge_ids` records their original provenance.
+The result remains `acceptance: pending`. Never edit final XML to bypass this
+path, skip reviewer gates, silently fall back to native routing, or call a
+successful geometry adjustment a delivery PASS.
+
 LLM macro guidance may use project-state `layout_hints.region_order`, listing
 each visible region once. This is an input-order preference, not a fixed spatial
 position; inspect the result. Other hints are rejected rather than ignored.
