@@ -67,6 +67,13 @@ def segment_hits_interior(first, second, box, epsilon=0.01):
 
 
 class ElkLayoutTests(unittest.TestCase):
+    def test_repository_bundles_pinned_offline_elk_runtime(self):
+        runtime = ROOT / "vendor/elk/runtime/elk.bundled.js"
+        metadata = json.loads((runtime.parent / "package.json").read_text())
+        self.assertTrue(runtime.is_file())
+        self.assertEqual(metadata["name"], "elkjs")
+        self.assertEqual(metadata["version"], "0.12.0")
+
     def test_multiple_state_writes_reserve_separate_route_shelves(self):
         data = {"project": {"typography": {"edge_label_font": 20}},
                 "regions": {"r": {}},

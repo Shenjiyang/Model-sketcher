@@ -8,6 +8,7 @@ function loadElk() {
   const explicit = process.env.ELKJS_MODULE;
   const candidates = [
     explicit,
+    path.join(__dirname, "..", "vendor", "elk", "runtime", "elk.bundled.js"),
     "elkjs/lib/elk.bundled.js",
     path.join(__dirname, "..", "vendor", "elk", "node_modules", "elkjs", "lib", "elk.bundled.js"),
   ].filter(Boolean);
@@ -32,7 +33,7 @@ function loadElk() {
     }
   }
   throw new Error(
-    `Unable to load elkjs. Install it locally or set ELKJS_MODULE. Last error: ${lastError?.message}`
+    `Unable to load elkjs. Restore the bundled runtime, install it locally, or set ELKJS_MODULE. Last error: ${lastError?.message}`
   );
 }
 

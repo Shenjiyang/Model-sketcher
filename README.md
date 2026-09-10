@@ -26,10 +26,15 @@ The Python tools use only the standard library. Draw.io is optional for semantic
 
 ## Installation
 
-Clone the repository directly into your Codex skills directory, then install the pinned ELK dependency:
+Clone the repository directly into your Codex skills directory. The pinned ELK runtime is included, so the standard installation does not require an npm download:
 
 ```bash
 git clone git@github.com:Shenjiyang/Model-sketcher.git "${CODEX_HOME:-$HOME/.codex}/skills/model-sketcher"
+```
+
+If the bundled runtime is missing or must be restored, reinstall the same pinned version with:
+
+```bash
 npm ci --prefix "${CODEX_HOME:-$HOME/.codex}/skills/model-sketcher/vendor/elk"
 ```
 
@@ -88,11 +93,11 @@ The pipeline deliberately stops at the topology-review gate when a valid indepen
 | `references/` | Compiler, topology, layout, rendering, and visual-style contracts |
 | `scripts/` | Validators, planners, compiler, renderer, and audit tools |
 | `tests/` | Standard-library `unittest` suite |
-| `vendor/elk/` | Pinned Node.js package for ELK layout |
+| `vendor/elk/` | Bundled offline ELK runtime plus pinned npm recovery metadata |
 
 ## Development
 
-Install the layout dependency and run the complete test suite:
+The bundled runtime is sufficient for tests and normal use. To refresh it during dependency maintenance, install the pinned package, update `vendor/elk/runtime/` from that exact version, and then run the complete test suite:
 
 ```bash
 npm ci --prefix vendor/elk
