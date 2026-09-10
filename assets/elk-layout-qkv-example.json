@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "id": "packed-qkv-attention-example",
+  "direction": "UP",
+  "spacing": {
+    "node": 68,
+    "layer": 104,
+    "edge_node": 30,
+    "edge": 20
+  },
+  "nodes": {
+    "input": {"w": 260, "h": 72},
+    "packed_projection": {"w": 300, "h": 72},
+    "packed_reshape": {"w": 270, "h": 72},
+    "split": {"w": 220, "h": 72},
+    "q": {"w": 190, "h": 72},
+    "k": {"w": 190, "h": 72},
+    "v": {"w": 190, "h": 72},
+    "qk_matmul": {"w": 240, "h": 72},
+    "scale": {"w": 200, "h": 72},
+    "softmax": {"w": 210, "h": 72},
+    "av_matmul": {"w": 240, "h": 72},
+    "flatten": {"w": 220, "h": 72},
+    "output": {"w": 240, "h": 72}
+  },
+  "edges": {
+    "e_input_projection": {"source": "input", "target": "packed_projection"},
+    "e_projection_reshape": {"source": "packed_projection", "target": "packed_reshape"},
+    "e_reshape_split": {"source": "packed_reshape", "target": "split"},
+    "e_split_q": {"source": "split", "target": "q", "source_order": 0},
+    "e_split_k": {"source": "split", "target": "k", "source_order": 1},
+    "e_split_v": {"source": "split", "target": "v", "source_order": 2},
+    "e_q_qk": {"source": "q", "target": "qk_matmul", "target_order": 0},
+    "e_k_qk": {"source": "k", "target": "qk_matmul", "target_order": 1},
+    "e_qk_scale": {
+      "source": "qk_matmul",
+      "target": "scale",
+      "label": {"text": "logits [B,H,Sq,Sk]", "w": 148, "h": 24}
+    },
+    "e_scale_softmax": {"source": "scale", "target": "softmax"},
+    "e_softmax_av": {"source": "softmax", "target": "av_matmul", "target_order": 0},
+    "e_v_av": {
+      "source": "v",
+      "target": "av_matmul",
+      "source_side": "west",
+      "target_side": "east",
+      "target_order": 0,
+      "label": {"text": "V [B,Sk,H,Dv]", "w": 130, "h": 24}
+    },
+    "e_av_flatten": {"source": "av_matmul", "target": "flatten"},
+    "e_flatten_output": {"source": "flatten", "target": "output"}
+  }
+}

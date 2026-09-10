@@ -1,0 +1,13 @@
+{
+  "architecture": "architecture.json",
+  "state": "project-state.json",
+  "layout": "views/model-algorithm.layout.json",
+  "diagram": "views/model-algorithm.drawio",
+  "manifest": "views/model-algorithm.audit.json",
+  "focused_views": [
+    {
+      "view": "attention-algorithm",
+      "manifest": "views/attention-algorithm.audit.json"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "mla-decode-example",
+  "direction": "UP",
+  "spacing": {
+    "node": 64,
+    "layer": 96,
+    "edge_node": 28,
+    "edge": 18
+  },
+  "nodes": {
+    "input": {"w": 300, "h": 72},
+    "q_split": {"w": 260, "h": 72},
+    "wuk": {"w": 280, "h": 72},
+    "insert": {"w": 300, "h": 72},
+    "attention": {"w": 300, "h": 72},
+    "wuv": {"w": 280, "h": 72},
+    "output": {"w": 260, "h": 72},
+    "cache": {"w": 280, "h": 88},
+    "cache_read": {"w": 240, "h": 72}
+  },
+  "edges": {
+    "e_input_split": {"source": "input", "target": "q_split"},
+    "e_split_wuk": {"source": "q_split", "target": "wuk"},
+    "e_wuk_insert": {"source": "wuk", "target": "insert"},
+    "e_insert_attention": {
+      "source": "insert",
+      "target": "attention",
+      "target_side": "south",
+      "target_order": 0,
+      "label": {"text": "latent_query [B,H,Lkv+64]", "w": 190, "h": 24}
+    },
+    "e_attention_wuv": {"source": "attention", "target": "wuv"},
+    "e_wuv_output": {"source": "wuv", "target": "output"},
+    "e_cache_read": {"source": "cache", "target": "cache_read"},
+    "e_cache_attention": {
+      "source": "cache_read",
+      "target": "attention",
+      "source_side": "west",
+      "target_side": "east",
+      "target_order": 0,
+      "label": {"text": "cached_latent_keys [NB,Bs,Lkv+64]", "w": 230, "h": 24}
+    }
+  }
+}

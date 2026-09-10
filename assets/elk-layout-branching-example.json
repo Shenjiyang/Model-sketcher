@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "gated-ffn-residual-example",
+  "direction": "UP",
+  "spacing": {
+    "node": 72,
+    "layer": 104,
+    "edge_node": 30,
+    "edge": 20
+  },
+  "elk_options": {
+    "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
+    "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED"
+  },
+  "nodes": {
+    "input": {"w": 260, "h": 72},
+    "norm": {"w": 240, "h": 72},
+    "gate": {"w": 240, "h": 72},
+    "up": {"w": 240, "h": 72},
+    "silu": {"w": 210, "h": 72},
+    "multiply": {"w": 240, "h": 72},
+    "down": {"w": 240, "h": 72},
+    "residual_add": {"w": 260, "h": 72},
+    "output": {"w": 240, "h": 72}
+  },
+  "edges": {
+    "e_input_norm": {"source": "input", "target": "norm"},
+    "e_norm_gate": {"source": "norm", "target": "gate", "source_order": 0},
+    "e_norm_up": {"source": "norm", "target": "up", "source_order": 1},
+    "e_gate_silu": {"source": "gate", "target": "silu"},
+    "e_silu_mul": {"source": "silu", "target": "multiply", "target_order": 0},
+    "e_up_mul": {"source": "up", "target": "multiply", "target_order": 1},
+    "e_mul_down": {"source": "multiply", "target": "down"},
+    "e_down_add": {"source": "down", "target": "residual_add", "target_order": 0},
+    "e_residual_skip": {
+      "source": "input",
+      "target": "residual_add",
+      "source_side": "west",
+      "target_side": "west",
+      "target_order": 1,
+      "label": {"text": "residual [B,S,D]", "w": 132, "h": 24}
+    },
+    "e_add_output": {"source": "residual_add", "target": "output"}
+  }
+}

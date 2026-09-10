@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "project": {
+    "id": "replace-with-model-id",
+    "title": "Replace with model title",
+    "output_view": "hierarchy-master",
+    "request_contract": {
+      "user_quote": "Replace with the verbatim user request",
+      "source_ref": "Replace with the originating task/message reference",
+      "views": ["model-algorithm"],
+      "coverage": "whole-model",
+      "depth": "logical-operators",
+      "required_modules": []
+    },
+    "delivery_scope": {"module_regions": {}, "required_regions": {}},
+    "semantic_view": "model-algorithm",
+    "require_source_coverage": true,
+    "require_logical_operator_contracts": true,
+    "require_view_projection_contracts": true,
+    "typography": {
+      "ordinary_node_font": 18,
+      "edge_label_font": 14,
+      "annotation_font": 14,
+      "region_title_font": 20,
+      "hierarchy_label_font": 20
+    }
+  },
+  "evidence": [
+    {"id": "config", "role": "checkpoint-config", "path": "references/model/config.json", "revision": "unknown"},
+    {"id": "forward", "role": "canonical-model", "path": "references/model/modeling.py", "revision": "unknown"}
+  ],
+  "shape_symbols": {
+    "B": "batch size",
+    "S": "sequence length",
+    "D": "model hidden dimension"
+  },
+  "regions": {
+    "model": {
+      "label": "Model", "parent": null, "direction": "column", "flow_direction": "bottom-to-top",
+      "child_direction": "row", "order": 0, "level": 0, "granularity": "module-summary",
+      "semantic_layer": "model-algorithm", "views": ["model-algorithm"],
+      "operator_sequences": [{"id": "main", "nodes": ["input", "embedding", "block", "final_norm", "output_head", "output"]}]
+    }
+  },
+  "nodes": {
+    "input": {"label": "Input", "kind": "interface", "visual_class": "io-op", "region": "model", "order": 0, "evidence": ["config"], "semantic_layer": "shared-interface", "views": ["model-algorithm"]},
+    "embedding": {"label": "Token Embedding", "kind": "module", "visual_class": "tensor-op", "visual_class_reason": "This summary node represents exactly one embedding lookup.", "region": "model", "order": 1, "evidence": ["forward"], "semantic_layer": "model-algorithm", "views": ["model-algorithm"]},
+    "block": {"label": "Model Block ×N", "kind": "module", "visual_class": "composite-op", "region": "model", "order": 2, "evidence": ["forward"], "semantic_layer": "model-algorithm", "views": ["model-algorithm"]},
+    "final_norm": {"label": "Final Norm", "kind": "operator", "visual_class": "vector-op", "visual_class_reason": "The cited final normalization is a vector operation.", "region": "model", "order": 3, "evidence": ["forward"], "semantic_layer": "model-algorithm", "views": ["model-algorithm"]},
+    "output_head": {"label": "Output Head", "kind": "module", "visual_class": "tensor-op", "visual_class_reason": "This summary node represents exactly one output projection.", "region": "model", "order": 4, "evidence": ["forward"], "semantic_layer": "model-algorithm", "views": ["model-algorithm"]},
+    "output": {"label": "Output", "kind": "interface", "visual_class": "io-op", "region": "model", "order": 5, "evidence": ["forward"], "semantic_layer": "shared-interface", "views": ["model-algorithm"]}
+  },
+  "edges": {
+    "input_to_embedding": {"source": "input", "target": "embedding", "kind": "tensor", "label": "token ids", "semantic_layer": "model-algorithm", "views": ["model-algorithm"]},
+    "embedding_to_block": {"source": "embedding", "target": "block", "kind": "tensor", "label": "hidden states", "semantic_layer": "model-algorithm", "views": ["model-algorithm"]},
+    "block_to_norm": {"source": "block", "target": "final_norm", "kind": "tensor", "label": "final hidden states", "semantic_layer": "model-algorithm", "views": ["model-algorithm"]},
+    "norm_to_head": {"source": "final_norm", "target": "output_head", "kind": "tensor", "label": "normalized hidden states", "semantic_layer": "model-algorithm", "views": ["model-algorithm"]},
+    "head_to_output": {"source": "output_head", "target": "output", "kind": "tensor", "label": "logits or model output", "semantic_layer": "model-algorithm", "views": ["model-algorithm"]}
+  },
+  "view_projection_contract": {
+    "status": "pass",
+    "method": "canonical-ir-projection-review",
+    "views": {
+      "model-algorithm": {
+        "kind": "algorithm-master",
+        "purpose": "Reader-facing mathematical model architecture without deployment-selected backend alternatives."
+      }
+    },
+    "checks": [
+      "canonical-entity-disposition",
+      "algorithm-backend-separation",
+      "model-semantics-retained",
+      "runtime-variant-placement"
+    ],
+    "findings": ["Replace with the reviewed boundary between model semantics, inference execution, and backend implementation."]
+  },
+  "overview_contract": {
+    "status": "pass",
+    "method": "standalone-reader-review",
+    "level0_region_ids": ["model"],
+    "spine_nodes": ["input", "embedding", "block", "final_norm", "output_head", "output"],
+    "facets": {
+      "input": ["input"],
+      "input-adapter": ["embedding"],
+      "backbone": ["block"],
+      "output": ["final_norm", "output_head", "output"]
+    },
+    "signature_components": [
+      {
+        "id": "repeated-model-block",
+        "display_text": "Model Block",
+        "level0_nodes": ["block"],
+        "level1_nodes": [],
+        "evidence": ["forward"]
+      }
+    ],
+    "checks": [
+      "standalone-model-identity",
+      "heterogeneous-backbone-summary",
+      "model-level-branch-coverage",
+      "output-readout-coverage"
+    ],
+    "findings": ["Replace with a source-grounded statement of what a reader can learn from Level 0 without opening detail regions."]
+  },
+  "detail_information_gain_contracts": {},
+  "runtime_variant_contracts": {},
+  "state_lifecycle_contracts": {},
+  "source_coverage": {
+    "scope": "complete-hierarchy",
+    "canonical_source_ids": ["forward"],
+    "paths": [
+      {
+        "id": "model-forward",
+        "evidence": "forward",
+        "source": "modeling.py:replace-with-forward-range",
+        "regions": ["model"],
+        "operations": [
+          {"id": "model.embedding", "label": "Embedding lookup", "status": "visible-node", "node": "embedding", "source": "modeling.py:replace-with-line"},
+          {"id": "model.block", "label": "Repeated model block call", "status": "visible-node", "node": "block", "source": "modeling.py:replace-with-line"},
+          {"id": "model.final_norm", "label": "Final normalization", "status": "visible-node", "node": "final_norm", "source": "modeling.py:replace-with-line"},
+          {"id": "model.output_head", "label": "Output head call", "status": "visible-node", "node": "output_head", "source": "modeling.py:replace-with-line"},
+          {"id": "model.output", "label": "Final model output", "status": "visible-node", "node": "output", "source": "modeling.py:replace-with-line"}
+        ]
+      }
+    ],
+    "reconciliation": {
+      "status": "pass",
+      "method": "independent-source-reread",
+      "reviewed_path_ids": ["model-forward"],
+      "architecture_changed": false,
+      "findings": ["Replace with the omissions, disagreements, or no-omission result found by the source-first second pass."]
+    }
+  },
+  "execution_fusions": [],
+  "repetitions": [{"region": "model", "target": "block", "count": "N"}],
+  "unresolved_claims": []
+}

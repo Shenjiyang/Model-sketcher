@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "project": {"id": "operator-detail-example", "title": "Mixer operator detail", "output_view": "hierarchy-master", "require_source_coverage": true, "require_logical_operator_contracts": true},
+  "evidence": [
+    {"id": "config", "role": "checkpoint-config", "path": "references/model/config.json", "revision": "example"},
+    {"id": "forward", "role": "canonical-model", "path": "references/model/modeling.py", "revision": "example"}
+  ],
+  "shape_symbols": {
+    "B": "batch size",
+    "S": "sequence length",
+    "D": "model hidden dimension",
+    "Hq": "query head count",
+    "Hkv": "key/value head count",
+    "Dh": "head dimension"
+  },
+  "regions": {
+    "mixer_detail": {
+      "label": "Level 2 - Mixer operator detail",
+      "parent": null,
+      "direction": "column",
+      "flow_direction": "bottom-to-top",
+      "order": 0,
+      "level": 2,
+      "granularity": "operator-detail",
+      "operator_standard": "logical-tensor-ops",
+      "operator_sequences": [
+        {"id": "query_main", "nodes": ["x", "pre_norm", "q_proj", "q_reshape", "score_matmul", "softmax", "value_matmul", "o_proj", "y"]},
+        {"id": "kv_cache_write", "nodes": ["x", "kv_proj", "kv_reshape", "kv_split", "cache_update"]}
+      ]
+    }
+  },
+  "nodes": {
+    "x": {"label": "Mixer input", "kind": "interface", "region": "mixer_detail", "order": 0, "evidence": ["config"]},
+    "pre_norm": {"label": "RMSNorm", "kind": "operator", "region": "mixer_detail", "order": 1, "evidence": ["forward"], "parameter_shapes": ["gamma: [D]"], "operator_contract": {"classification": "atomic-operator", "op_type": "rmsnorm", "semantic_role": "input-normalization", "source_symbols": ["self.pre_norm"], "shape_rule": "preserve"}},
+    "q_proj": {"label": "Query projection", "kind": "operator", "region": "mixer_detail", "order": 2, "evidence": ["forward"], "parameter_shapes": ["W_q: [D,Hq*Dh]"], "operator_contract": {"classification": "atomic-operator", "op_type": "linear", "semantic_role": "query-projection", "source_symbols": ["self.q_proj"], "shape_rule": "transform", "shape_equation": "[B,S,D] -> [B,S,Hq*Dh]"}},
+    "q_reshape": {"label": "Query head reshape", "kind": "operator", "region": "mixer_detail", "order": 3, "evidence": ["forward"], "operator_contract": {"classification": "view-transform", "op_type": "reshape", "semantic_role": "query-head-layout", "source_symbols": ["q.view"], "shape_rule": "transform", "shape_equation": "[B,S,Hq*Dh] <-> [B,S,Hq,Dh]"}},
+    "kv_proj": {"label": "Packed key/value projection", "kind": "operator", "region": "mixer_detail", "order": 4, "evidence": ["forward"], "parameter_shapes": ["W_kv: [D,Hkv*2Dh]"], "operator_contract": {"classification": "packed-parameterized-op", "op_type": "linear", "semantic_role": "key-value-projection", "source_symbols": ["self.kv_proj"], "shape_rule": "transform", "shape_equation": "[B,S,D] -> [B,S,Hkv*2Dh]", "decomposition_path": ["kv_proj", "kv_reshape", "kv_split"], "packed_outputs": [{"name": "K", "edge": "split_to_k_cache", "consumer": "cache_update", "shape": "[B,S,Hkv,Dh]"}, {"name": "V", "edge": "split_to_v_cache", "consumer": "cache_update", "shape": "[B,S,Hkv,Dh]"}]}},
+    "kv_reshape": {"label": "Packed key/value reshape", "kind": "operator", "region": "mixer_detail", "order": 5, "evidence": ["forward"], "operator_contract": {"classification": "view-transform", "op_type": "reshape", "semantic_role": "key-value-head-layout", "source_symbols": ["kv.view"], "shape_rule": "transform", "shape_equation": "[B,S,Hkv*2Dh] -> [B,S,Hkv,2,Dh]"}},
+    "kv_split": {"label": "Split key and value", "kind": "operator", "region": "mixer_detail", "order": 6, "evidence": ["forward"], "operator_contract": {"classification": "view-transform", "op_type": "split", "semantic_role": "key-value-split", "source_symbols": ["kv.unbind"], "shape_rule": "multi-output", "shape_equation": "[B,S,Hkv,2,Dh] -> K[B,S,Hkv,Dh] + V[B,S,Hkv,Dh]"}},
+    "cache_update": {"label": "KV cache update", "kind": "operator", "region": "mixer_detail", "order": 7, "evidence": ["forward"], "operator_contract": {"classification": "atomic-operator", "op_type": "cache-update", "semantic_role": "key-value-cache-write", "source_symbols": ["cache.update"], "shape_rule": "stateful", "shape_equation": "K,V + slot_mapping -> paged KV cache"}},
+    "kv_cache": {"label": "Paged KV Cache", "kind": "cache", "region": "mixer_detail", "order": 8, "evidence": ["forward"]},
+    "score_matmul": {"label": "Query-key matmul", "kind": "operator", "region": "mixer_detail", "order": 8, "evidence": ["forward"], "operator_contract": {"classification": "atomic-operator", "op_type": "matmul", "semantic_role": "attention-score", "source_symbols": ["query @ key.transpose"], "shape_rule": "multi-input", "shape_equation": "Q[B,S,Hq,Dh] @ K^T[B,S,Hkv,Dh] -> scores[B,Hq,S,S]"}},
+    "softmax": {"label": "Attention softmax", "kind": "operator", "region": "mixer_detail", "order": 9, "evidence": ["forward"], "operator_contract": {"classification": "atomic-operator", "op_type": "softmax", "semantic_role": "attention-probability", "source_symbols": ["torch.softmax"], "shape_rule": "preserve"}},
+    "value_matmul": {"label": "Probability-value matmul", "kind": "operator", "region": "mixer_detail", "order": 10, "evidence": ["forward"], "operator_contract": {"classification": "atomic-operator", "op_type": "matmul", "semantic_role": "value-aggregation", "source_symbols": ["probability @ value"], "shape_rule": "multi-input", "shape_equation": "P[B,Hq,S,S] @ V[B,S,Hkv,Dh] -> [B,S,Hq*Dh]"}},
+    "o_proj": {"label": "Output projection", "kind": "operator", "region": "mixer_detail", "order": 11, "evidence": ["forward"], "parameter_shapes": ["W_o: [Hq*Dh,D]"], "operator_contract": {"classification": "atomic-operator", "op_type": "linear", "semantic_role": "output-projection", "source_symbols": ["self.o_proj"], "shape_rule": "transform", "shape_equation": "[B,S,Hq*Dh] -> [B,S,D]"}},
+    "y": {"label": "Mixer output", "kind": "interface", "region": "mixer_detail", "order": 12, "evidence": ["forward"]}
+  },
+  "edges": {
+    "x_to_norm": {"source": "x", "target": "pre_norm", "kind": "tensor", "tensor": {"name": "x", "shape": "[B,S,D]", "status": "config-confirmed", "evidence": ["config"]}},
+    "norm_to_q": {"source": "pre_norm", "target": "q_proj", "kind": "tensor", "tensor": {"name": "normalized_x", "shape": "[B,S,D]", "status": "code-confirmed", "evidence": ["forward"]}},
+    "q_to_reshape": {"source": "q_proj", "target": "q_reshape", "kind": "tensor", "tensor": {"name": "q_flat", "shape": "[B,S,Hq*Dh]", "status": "code-confirmed", "evidence": ["forward"]}},
+    "q_to_score": {"source": "q_reshape", "target": "score_matmul", "kind": "tensor", "tensor": {"name": "Q", "shape": "[B,S,Hq,Dh]", "status": "code-confirmed", "evidence": ["forward"]}},
+    "x_to_kv": {"source": "x", "target": "kv_proj", "kind": "tensor", "tensor": {"name": "x", "shape": "[B,S,D]", "status": "config-confirmed", "evidence": ["config"]}},
+    "kv_to_reshape": {"source": "kv_proj", "target": "kv_reshape", "kind": "tensor", "tensor": {"name": "kv_flat", "shape": "[B,S,Hkv*2Dh]", "status": "code-confirmed", "evidence": ["forward"]}},
+    "reshape_to_split": {"source": "kv_reshape", "target": "kv_split", "kind": "tensor", "tensor": {"name": "packed_kv_heads", "shape": "[B,S,Hkv,2,Dh]", "status": "code-confirmed", "evidence": ["forward"]}},
+    "split_to_k_cache": {"source": "kv_split", "target": "cache_update", "kind": "tensor", "tensor": {"name": "K", "shape": "[B,S,Hkv,Dh]", "status": "code-confirmed", "evidence": ["forward"]}},
+    "split_to_v_cache": {"source": "kv_split", "target": "cache_update", "kind": "tensor", "tensor": {"name": "V", "shape": "[B,S,Hkv,Dh]", "status": "code-confirmed", "evidence": ["forward"]}},
+    "update_to_cache": {"source": "cache_update", "target": "kv_cache", "kind": "tensor", "tensor": {"name": "cache_write", "shape": "[B,S,Hkv,Dh]", "status": "backend-dependent", "reason": "Physical paged-cache shape depends on the serving backend.", "evidence": []}},
+    "cache_to_score": {"source": "kv_cache", "target": "score_matmul", "kind": "tensor", "tensor": {"name": "cached_K", "shape": "[B,S,Hkv,Dh]", "status": "code-confirmed", "evidence": ["forward"]}},
+    "score_to_softmax": {"source": "score_matmul", "target": "softmax", "kind": "tensor", "tensor": {"name": "scores", "shape": "[B,Hq,S,S]", "status": "code-confirmed", "evidence": ["forward"]}},
+    "softmax_to_value": {"source": "softmax", "target": "value_matmul", "kind": "tensor", "tensor": {"name": "probabilities", "shape": "[B,Hq,S,S]", "status": "code-confirmed", "evidence": ["forward"]}},
+    "cache_to_value": {"source": "kv_cache", "target": "value_matmul", "kind": "tensor", "tensor": {"name": "cached_V", "shape": "[B,S,Hkv,Dh]", "status": "code-confirmed", "evidence": ["forward"]}},
+    "value_to_o": {"source": "value_matmul", "target": "o_proj", "kind": "tensor", "tensor": {"name": "attention_output", "shape": "[B,S,Hq*Dh]", "status": "code-confirmed", "evidence": ["forward"]}},
+    "o_to_y": {"source": "o_proj", "target": "y", "kind": "tensor", "tensor": {"name": "y", "shape": "[B,S,D]", "status": "code-confirmed", "evidence": ["forward"]}}
+  },
+  "detail_information_gain_contracts": {},
+  "runtime_variant_contracts": {},
+  "state_lifecycle_contracts": {
+    "kv_cache": {
+      "status": "pass",
+      "method": "state-lifecycle-review",
+      "storage_shape": "[num_blocks,block_size,Hkv,Dh]",
+      "layout": "paged key/value blocks",
+      "dtype": "model cache dtype",
+      "scope": "per-layer inference cache",
+      "lifetime": "request sequence",
+      "writers": [{"operation": "cache_update", "edge": "update_to_cache", "addressing": ["slot_mapping"]}],
+      "readers": [
+        {"operation": "score_matmul", "edge": "cache_to_score", "addressing": ["block_table", "sequence_lengths"]},
+        {"operation": "value_matmul", "edge": "cache_to_value", "addressing": ["block_table", "sequence_lengths"]}
+      ],
+      "evidence": ["forward"]
+    }
+  },
+  "source_coverage": {
+    "scope": "complete-hierarchy",
+    "canonical_source_ids": ["forward"],
+    "paths": [
+      {
+        "id": "mixer-forward",
+        "evidence": "forward",
+        "source": "modeling.py:example-forward",
+        "regions": ["mixer_detail"],
+        "operations": [
+          {"id": "mixer.pre_norm", "label": "RMSNorm", "status": "visible-node", "node": "pre_norm", "source": "modeling.py:example-norm"},
+          {"id": "mixer.q_proj", "label": "Query projection", "status": "visible-node", "node": "q_proj", "source": "modeling.py:example-q-proj"},
+          {"id": "mixer.q_reshape", "label": "Query reshape", "status": "visible-node", "node": "q_reshape", "source": "modeling.py:example-q-reshape"},
+          {"id": "mixer.kv_proj", "label": "Key/value projection", "status": "visible-node", "node": "kv_proj", "source": "modeling.py:example-kv-proj"},
+          {"id": "mixer.kv_reshape", "label": "Key/value reshape", "status": "visible-node", "node": "kv_reshape", "source": "modeling.py:example-kv-reshape"},
+          {"id": "mixer.kv_split", "label": "Key/value split", "status": "visible-node", "node": "kv_split", "source": "modeling.py:example-kv-split"},
+          {"id": "mixer.cache_update", "label": "Cache update", "status": "visible-node", "node": "cache_update", "source": "modeling.py:example-cache"},
+          {"id": "mixer.kv_cache", "label": "Paged KV cache state", "status": "visible-node", "node": "kv_cache", "source": "modeling.py:example-cache"},
+          {"id": "mixer.score", "label": "Query-key matmul", "status": "visible-node", "node": "score_matmul", "source": "modeling.py:example-score"},
+          {"id": "mixer.softmax", "label": "Softmax", "status": "visible-node", "node": "softmax", "source": "modeling.py:example-softmax"},
+          {"id": "mixer.value", "label": "Probability-value matmul", "status": "visible-node", "node": "value_matmul", "source": "modeling.py:example-value"},
+          {"id": "mixer.o_proj", "label": "Output projection", "status": "visible-node", "node": "o_proj", "source": "modeling.py:example-o-proj"}
+        ]
+      }
+    ],
+    "reconciliation": {
+      "status": "pass",
+      "method": "independent-source-reread",
+      "reviewed_path_ids": ["mixer-forward"],
+      "architecture_changed": false,
+      "findings": ["The source-first second pass found no omitted material mixer operations."]
+    }
+  },
+  "operator_naming_review": {
+    "status": "pass",
+    "method": "reader-and-source-review",
+    "reviewed_region_ids": ["mixer_detail"],
+    "checks": ["reader-facing-labels", "source-symbol-traceability", "sibling-consistency"],
+    "findings": ["Labels use common attention terminology; exact implementation identifiers remain in source_symbols."]
+  },
+  "operator_display_contract": {
+    "status": "pass",
+    "method": "reader-shape-parameter-review",
+    "reviewed_region_ids": ["mixer_detail"],
+    "activation_shape_placement": "tensor-edges",
+    "parameter_shape_placement": "external-annotations-or-structured-ir",
+    "source_symbol_placement": "structured-ir-or-secondary-line",
+    "checks": ["operator-names", "activation-shapes-on-edges", "parameter-shapes-outside-blocks", "source-symbols-outside-primary-label"],
+    "findings": ["Operator labels contain reader-facing actions; tensor shapes stay on edges and source names stay in structured contracts."]
+  },
+  "execution_fusions": [],
+  "repetitions": [],
+  "unresolved_claims": []
+}

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "current_stage": "evidence",
+  "accepted_regions": [],
+  "blocked_regions": {},
+  "region_policies": {},
+  "layout_overrides": {
+    "regions": {},
+    "nodes": {},
+    "edges": {},
+    "hierarchy_arrows": {}
+  },
+  "change_set": null,
+  "source_coverage_debt": [],
+  "unresolved_claims": [],
+  "last_successful_gate": null,
+  "topology_review": null,
+  "last_successful_audit": null
+}

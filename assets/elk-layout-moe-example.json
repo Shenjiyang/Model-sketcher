@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "routed-shared-moe-example",
+  "direction": "UP",
+  "spacing": {
+    "node": 76,
+    "layer": 108,
+    "edge_node": 32,
+    "edge": 20
+  },
+  "nodes": {
+    "input": {"w": 260, "h": 72},
+    "router": {"w": 240, "h": 72},
+    "topk": {"w": 210, "h": 72},
+    "dispatch": {"w": 240, "h": 72},
+    "routed_experts": {"w": 280, "h": 72},
+    "combine": {"w": 240, "h": 72},
+    "shared_experts": {"w": 270, "h": 72},
+    "aggregate": {"w": 250, "h": 72},
+    "output": {"w": 240, "h": 72}
+  },
+  "edges": {
+    "e_input_router": {"source": "input", "target": "router", "source_order": 0},
+    "e_router_topk": {"source": "router", "target": "topk"},
+    "e_topk_dispatch": {"source": "topk", "target": "dispatch"},
+    "e_dispatch_routed": {"source": "dispatch", "target": "routed_experts"},
+    "e_routed_combine": {"source": "routed_experts", "target": "combine"},
+    "e_input_shared": {"source": "input", "target": "shared_experts", "source_order": 1},
+    "e_combine_aggregate": {
+      "source": "combine",
+      "target": "aggregate",
+      "target_order": 0,
+      "label": {"text": "routed result [N,D]", "w": 148, "h": 24}
+    },
+    "e_shared_aggregate": {
+      "source": "shared_experts",
+      "target": "aggregate",
+      "target_order": 1,
+      "label": {"text": "shared result [N,D]", "w": 148, "h": 24}
+    },
+    "e_aggregate_output": {"source": "aggregate", "target": "output"}
+  }
+}

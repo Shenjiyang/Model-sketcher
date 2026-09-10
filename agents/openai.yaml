@@ -1,0 +1,3 @@
+interface:
+  display_name: "V4 Codepath Diagram Style"
+  short_description: "Enforce the DeepSeek V4 operator-diagram visual language"
