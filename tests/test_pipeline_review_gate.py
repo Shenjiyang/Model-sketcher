@@ -48,10 +48,10 @@ class PipelineReviewGateTests(unittest.TestCase):
         review_path.write_text(json.dumps(review), encoding="utf-8")
         result = self.run_pipeline(architecture, topology, review_path, root)
         self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
-        self.assertIn("schema_version must be 2", result.stdout)
+        self.assertIn("schema_version must be 3", result.stdout)
         self.assertFalse((root / "layout.json").exists())
 
-    def test_valid_schema_v2_review_allows_layout_and_compile(self):
+    def test_valid_schema_v3_review_allows_layout_and_compile(self):
         temp, root, architecture, topology, review, _ = reviewed_project()
         self.addCleanup(temp.cleanup)
         result = self.run_pipeline(architecture, topology, review, root)

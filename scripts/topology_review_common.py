@@ -123,6 +123,24 @@ def semantic_json_sha256(value: object) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def review_payload_sha256(value: object) -> str:
+    """Hash a normalized completed review without its finalizer-owned receipt."""
+    data = deepcopy(value)
+    if isinstance(data, dict):
+        data.pop("review_receipt", None)
+    payload = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def seal_review(value: dict) -> dict:
+    """Attach the deterministic receipt checked by every downstream semantic gate."""
+    value["review_receipt"] = {
+        "mechanism": "model-sketcher-controlled-finalizer-v1",
+        "payload_sha256": review_payload_sha256(value),
+    }
+    return value
+
+
 def resolve_evidence_path(architecture: Path, value: str) -> Path:
     path = Path(value)
     return path.resolve() if path.is_absolute() else (architecture.parent / path).resolve()

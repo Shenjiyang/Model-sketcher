@@ -15,6 +15,7 @@ from topology_review_common import (
     is_concrete_text,
     resolve_evidence_path,
     semantic_json_sha256,
+    review_payload_sha256,
     sha256,
 )
 from render_topology_contract import render
@@ -542,7 +543,13 @@ def validate_reconstruction_review(data: dict, review: dict, errors: list[str]) 
         errors.append("reconstruction_review has unresolved blocking findings")
 
 
-def validate_review(architecture: Path, topology: Path, review_path: Path) -> list[str]:
+def validate_review(
+    architecture: Path,
+    topology: Path,
+    review_path: Path,
+    *,
+    require_receipt: bool = True,
+) -> list[str]:
     from semantic_gate import validate_delivery_scope
     errors: list[str] = []
     try:
@@ -554,8 +561,19 @@ def validate_review(architecture: Path, topology: Path, review_path: Path) -> li
     architecture_errors.extend(validate_delivery_scope(data))
     if architecture_errors:
         return [f"architecture IR invalid for topology review: {error}" for error in architecture_errors]
-    if not isinstance(review, dict) or review.get("schema_version") != 2:
-        return ["topology review schema_version must be 2; regenerate the review artifact"]
+    if not isinstance(review, dict) or review.get("schema_version") != 3:
+        return ["topology review schema_version must be 3; regenerate the review artifact"]
+    receipt = review.get("review_receipt")
+    if require_receipt:
+        if not isinstance(receipt, dict):
+            errors.append("topology review is not finalized: review_receipt is missing")
+        elif set(receipt) != {"mechanism", "payload_sha256"}:
+            errors.append("topology review receipt contains unsupported fields")
+        else:
+            if receipt.get("mechanism") != "model-sketcher-controlled-finalizer-v1":
+                errors.append("topology review receipt mechanism is invalid")
+            if receipt.get("payload_sha256") != review_payload_sha256(review):
+                errors.append("topology review receipt is stale: completed review was edited after finalization")
     if review.get("review_scope") != "semantic-topology":
         errors.append("topology review_scope must be semantic-topology")
     if not isinstance(review.get("trigger"), str) or review["trigger"] not in REVIEW_TRIGGERS:

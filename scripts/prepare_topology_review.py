@@ -48,7 +48,7 @@ def build_pending_review(architecture: Path, topology: Path, trigger: str) -> di
     )
     region_ids = sorted(data.get("regions", {}))
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "review_scope": "semantic-topology",
         "trigger": trigger,
         "architecture_semantic_sha256": semantic_json_sha256(data),

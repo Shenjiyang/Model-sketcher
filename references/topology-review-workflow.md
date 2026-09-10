@@ -29,7 +29,7 @@ blocking findings; preserve concrete non-blocking observations in findings.
 
 If subagents are unavailable, stop before layout and report that independent semantic acceptance remains pending. A same-agent reread may produce useful findings but cannot set `independent_from_builder: true` or support a strict final PASS.
 
-## Required review content (schema v2)
+## Required review content (schema v3)
 
 The mandatory `user-request-coverage` semantic result covers every region and
 selected source path. Read the originating user task and `project.request_contract`
@@ -95,7 +95,16 @@ python scripts/prepare_topology_review.py architecture.json topology.contract.tx
   topology-review.json --trigger cold-start
 ```
 
-The preparer first runs the complete architecture validator with source files required and verifies that the ASCII bytes exactly equal `render_topology_contract.py` output for that IR. It then hashes the canonical architecture meaning, exact generated ASCII, and every evidence file. The independent Reviewer replaces pending identity, attestations, inventory, per-check/per-region findings, statuses, and verdict. It must not alter the generated digests or evidence ledger. Use a real builder session ID and independent agent/session ID. These fields make accidental self-review auditable, but JSON cannot cryptographically prove authorship; orchestration must still create the Reviewer independently.
+The preparer first runs the complete architecture validator with source files required and verifies that the ASCII bytes exactly equal `render_topology_contract.py` output for that IR. It then hashes the canonical architecture meaning, exact generated ASCII, and every evidence file. The independent Reviewer replaces pending identity, attestations, inventory, per-check/per-region findings, statuses, and verdict. It must not alter the generated digests or evidence ledger. Use a real builder session ID and independent agent/session ID.
+
+After the Reviewer finishes, run the controlled finalizer once:
+
+```bash
+python scripts/finalize_topology_review.py architecture.json topology.contract.txt \
+  topology-review.json
+```
+
+The finalizer performs the complete semantic audit before adding a deterministic receipt over the normalized review. Layout, compiler, delivery, and reuse gates reject a missing receipt or any edit made after finalization. Formatting failure before finalization may be repaired from the preserved Reviewer output without another semantic read; a finding or verdict change requires the Reviewer. The receipt prevents accidental or casual direct JSON edits from silently passing, but it is not a cryptographic identity proof when Builder and Reviewer share the same operating-system account. Strong adversarial separation still requires a host-owned signing key or isolated Reviewer service.
 
 Validate it before layout:
 
@@ -104,4 +113,4 @@ python scripts/audit_topology_review.py architecture.json topology.contract.txt 
   topology-review.json
 ```
 
-The audit rejects an invalid architecture, non-canonical or hand-edited ASCII, stale semantic digest, regenerated ASCII, changed source file, incomplete or duplicate path/operation/check/region coverage, unpinned material callee, self-review, missing attestation, placeholder or blocking finding, or non-pass verdict. `run_compiler_pipeline.py --topology-review topology-review.json` enforces the gate for every compiler-path project, independent of optional project flags. A semantic change invalidates the old artifact by design; create a new pending artifact and rerun the Reviewer. Review-only prose and validated visual/layout fields do not change the semantic digest or generated ASCII, so they do not trigger another Reviewer.
+The audit rejects an invalid architecture, non-canonical or hand-edited ASCII, stale semantic digest, regenerated ASCII, changed source file, incomplete or duplicate path/operation/check/region coverage, unpinned material callee, self-review, missing attestation, placeholder or blocking finding, non-pass verdict, missing receipt, or post-finalization edit. `run_compiler_pipeline.py --topology-review topology-review.json` enforces the gate for every compiler-path project, independent of optional project flags. A semantic change invalidates the old artifact by design; create a new pending artifact and rerun the Reviewer. Review-only prose and validated visual/layout fields do not change the semantic digest or generated ASCII, so they do not trigger another Reviewer.

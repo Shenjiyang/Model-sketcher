@@ -7,7 +7,7 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
 from prepare_topology_review import build_pending_review
 from render_topology_contract import render
-from topology_review_common import RECONSTRUCTION_REVIEW_CHECKS, SEMANTIC_REVIEW_CHECKS
+from topology_review_common import RECONSTRUCTION_REVIEW_CHECKS, SEMANTIC_REVIEW_CHECKS, seal_review
 
 
 def architecture_data() -> dict:
@@ -246,7 +246,7 @@ def complete_review(review: dict, data: dict) -> dict:
         "findings": ["A reader can reconstruct the full fixture topology solely from the generated ASCII contract."],
         "blocking_findings": [],
     })
-    return review
+    return seal_review(review)
 
 
 def reviewed_project(with_views=False) -> tuple[tempfile.TemporaryDirectory, Path, Path, Path, Path, dict]:

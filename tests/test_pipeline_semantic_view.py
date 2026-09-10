@@ -15,6 +15,7 @@ from audit_topology_review import validate_review
 from prepare_topology_review import build_pending_review
 from render_topology_contract import render
 from review_fixture import complete_review, reviewed_project
+from topology_review_common import seal_review
 
 
 class PipelineSemanticViewTests(unittest.TestCase):
@@ -52,6 +53,7 @@ class PipelineSemanticViewTests(unittest.TestCase):
         for record in reconstruction["results"] + reconstruction["region_results"]:
             if "sequence:detail/main" in record["contract_refs"]:
                 record["contract_refs"].append("sequence:detail/aux")
+        seal_review(fixture_review)
         review.write_text(json.dumps(fixture_review, indent=2) + "\n")
         self.assertEqual(validate_review(architecture, topology, review), [])
         return root, architecture, topology, review

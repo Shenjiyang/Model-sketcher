@@ -1,5 +1,6 @@
 import copy
 import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -51,9 +52,38 @@ class TopologyReviewTests(unittest.TestCase):
         review = json.loads(pending_path.read_text(encoding="utf-8"))
         review["schema_version"] = 1
         pending_path.write_text(json.dumps(review), encoding="utf-8")
-        self.assertTrue(any("schema_version must be 2" in error for error in validate_review(
+        self.assertTrue(any("schema_version must be 3" in error for error in validate_review(
             architecture, topology, pending_path
         )))
+
+    def test_manual_edit_after_finalization_invalidates_receipt(self):
+        self.assert_review_error(
+            lambda review: review.update(verdict="fail"),
+            "edited after finalization",
+        )
+
+    def test_controlled_finalizer_seals_once_and_refuses_reseal(self):
+        temp, root, architecture, topology, review_path, _ = reviewed_project()
+        self.addCleanup(temp.cleanup)
+        review = self.read_review(review_path)
+        review.pop("review_receipt")
+        self.write_review(review_path, review)
+        command = [
+            sys.executable,
+            str(SCRIPTS / "finalize_topology_review.py"),
+            str(architecture),
+            str(topology),
+            str(review_path),
+        ]
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(validate_review(architecture, topology, review_path), [])
+        review = self.read_review(review_path)
+        review["verdict"] = "fail"
+        self.write_review(review_path, review)
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("refusing to reseal", result.stdout)
 
     def test_placeholder_and_duplicate_review_records_fail(self):
         self.assert_review_error(
