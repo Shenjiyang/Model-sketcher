@@ -1,4 +1,4 @@
-# DPSK V4 semantic color and Legend contract
+# Model Sketcher semantic color and Legend contract
 
 The semantic palette is a data contract, not decoration. The compiler owns the
 Draw.io color values; project code must not choose arbitrary per-node colors.
@@ -65,7 +65,7 @@ every semantic node, and all ten Legend cell IDs (title plus nine entries). The
 static audit fails when:
 
 - the Legend or any entry is missing, duplicated by ID, renamed, or recolored;
-- the manifest palette differs from the canonical DPSK V4 palette;
+- the manifest palette differs from the canonical Model Sketcher palette;
 - a node fill, border, font color, or dashed state disagrees with its class;
 - a persistent state or Cache legend swatch loses the slanted-storage glyph, or a cache operation incorrectly acquires it;
 - semantic-style coverage differs from the node-semantic ledger;

@@ -1,3 +1,4 @@
 interface:
-  display_name: "V4 Codepath Diagram Style"
-  short_description: "Enforce the DeepSeek V4 operator-diagram visual language"
+  display_name: "Model Sketcher"
+  short_description: "Create source-grounded editable model architecture diagrams"
+  default_prompt: "Use $model-sketcher to create a source-grounded editable architecture diagram for this model."

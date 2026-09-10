@@ -1,4 +1,4 @@
-# V4 code-path visual specification
+# Model Sketcher visual specification
 
 ## Adaptive execution and evidence reuse
 
@@ -338,7 +338,7 @@ Avoid a one-shot “each agent draws a region, then stitch everything” workflo
 
 ## Semantic Legend
 
-Use the fixed DPSK V4 palette below. The executable rules, inference boundaries,
+Use the fixed Model Sketcher palette below. The executable rules, inference boundaries,
 TP overlay, and mandatory Legend gate are defined in
 [semantic-color-legend-contract.md](semantic-color-legend-contract.md).
 

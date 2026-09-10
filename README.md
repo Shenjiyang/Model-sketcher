@@ -1,8 +1,8 @@
-# V4 Codepath Diagram Style
+# Model Sketcher
 
-`v4-codepath-diagram-style` is a Codex skill for producing dense, editable model and code-path architecture diagrams in the visual language used by DeepSeek V4 technical analyses. It treats diagrams as compiled engineering artifacts: source evidence becomes a semantic architecture IR, the IR becomes a reviewed topology contract, and deterministic layout produces an editable Draw.io file.
+`model-sketcher` is a Codex skill for producing dense, editable model and code-path architecture diagrams. It treats diagrams as compiled engineering artifacts: source evidence becomes a semantic architecture IR, the IR becomes a reviewed topology contract, and deterministic layout produces an editable Draw.io file.
 
-The skill is designed for source-level model analysis rather than generic presentation graphics. It can produce a hierarchy master, a continuous end-to-end dataflow view, or a paired delivery derived from the same canonical model.
+The skill is designed for source-level model analysis rather than generic presentation graphics. Its compact technical-analysis visual language began as a V4-inspired calibration, but the architecture, source code, framework, and model family are all open-ended. It can produce a hierarchy master, a continuous end-to-end dataflow view, or a paired delivery derived from the same canonical model.
 
 ## What it provides
 
@@ -29,20 +29,20 @@ The Python tools use only the standard library. Draw.io is optional for semantic
 Clone the repository directly into your Codex skills directory, then install the pinned ELK dependency:
 
 ```bash
-git clone <repo-url> "${CODEX_HOME:-$HOME/.codex}/skills/v4-codepath-diagram-style"
-npm ci --prefix "${CODEX_HOME:-$HOME/.codex}/skills/v4-codepath-diagram-style/vendor/elk"
+git clone git@github.com:Shenjiyang/Model-sketcher.git "${CODEX_HOME:-$HOME/.codex}/skills/model-sketcher"
+npm ci --prefix "${CODEX_HOME:-$HOME/.codex}/skills/model-sketcher/vendor/elk"
 ```
 
 Restart Codex if it was already running. Invoke the skill by name:
 
 ```text
-$v4-codepath-diagram-style
+$model-sketcher
 ```
 
 For example:
 
 ```text
-Use $v4-codepath-diagram-style to create a paired hierarchy and end-to-end
+Use $model-sketcher to create a paired hierarchy and end-to-end
 operator view for this model. Ground every operation in the supplied source tree.
 ```
 
