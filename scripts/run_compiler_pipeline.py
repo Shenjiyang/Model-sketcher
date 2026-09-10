@@ -63,7 +63,7 @@ def main() -> int:
     parser.add_argument("--previous-layout", type=Path)
     parser.add_argument("--change-plan", type=Path)
     parser.add_argument("--require-source-files", action="store_true")
-    parser.add_argument("--layout-engine", choices=("native", "elk"), default="native")
+    parser.add_argument("--layout-engine", choices=("native", "elk", "elk-compound"), default="native")
     parser.add_argument("--semantic-view", help="Select a declared view in memory; never rewrite canonical architecture")
     args = parser.parse_args()
 
@@ -159,13 +159,13 @@ def main() -> int:
             state,
             layout_engine=args.layout_engine,
         )
-    except ValueError as error:
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
         print(f"gate 4: FAIL ({error})")
         return 1
     args.layout.parent.mkdir(parents=True, exist_ok=True)
     write_json(args.layout, layout)
     update_state(args.state, "compile", "deterministic-layout")
-    print(f"gate 4: PASS (deterministic layout; {time.monotonic() - layout_started:.3f}s)")
+    print(f"gate 4: GENERATED (geometry only; audit pending; {time.monotonic() - layout_started:.3f}s)")
 
     args.drawio.parent.mkdir(parents=True, exist_ok=True)
     try:

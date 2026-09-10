@@ -22,10 +22,11 @@ project_active_view(canonical_ir)
     -> schema-v3 layout.json
 ```
 
-Keep ELK local to ordinary node placement and routing at first. Do not let it
-rewrite canonical IDs, sequence membership, region ownership, expansion
-attachments, or semantic edge kinds. Cross-region edges and hierarchy arrows
-remain later composition stages until their endpoint regions have final boxes.
+ELK must own every ordinary edge when selected. Do not rewrite canonical IDs,
+sequence membership, region ownership, expansion attachments, or edge kinds.
+When an ordinary edge crosses region ownership, `elk` selects the compound
+backend automatically. `elk-compound` explicitly selects the same global path.
+No ordinary edge may silently fall back to the native router.
 
 The ELK problem contains only stable node IDs, measured node boxes, directed
 edges, measured edge labels, port-side/order constraints, spacing, and optional
@@ -58,12 +59,32 @@ python scripts/run_compiler_pipeline.py architecture.json \
   --layout layout.json --drawio model.drawio
 ```
 
-The hybrid backend runs ELK only for ordinary nodes and edges owned directly
-by one projected region. The existing planner still composes regions, places
-hierarchy children, routes cross-region relations, applies incremental
-preservation, and creates hierarchy arrows. `layout.json` and the generated
-manifest record `hybrid-elk-layered`, the exact elkjs version, the ELK-owned
-region IDs, and the native macro engine.
+For independent regions with no ordinary cross-region edges, the hybrid backend
+retains native macro composition and hierarchy-arrow geometry while ELK owns
+all ordinary edges. For connected regions, compound ELK receives the entire
+containment tree and ordinary graph. Its nested coordinates and edge-container
+coordinates are converted to Draw.io's absolute layout coordinates. The same
+port, label, endpoint and node-penetration checks still apply.
+
+Both backends record `elk_edge_ids` and `native_routed_edge_ids` (empty) in
+layout metadata. Compound mode records `compound-elk-layered` and the exact
+ELK version. A generated layout is provisional, never an audit PASS.
+
+The compound backend currently requires full reflow: it rejects previous-layout
+preservation, frozen/preserved region policies, and coordinate/route overrides.
+LLM macro guidance may use project-state `layout_hints.region_order`, listing
+each visible region once. This is an input-order preference, not a fixed spatial
+position; inspect the result. Other hints are rejected rather than ignored.
+Hierarchy-arrow drawing, text measurement, semantic ownership and style remain
+separate responsibilities. Arbitrary nested multi-section edge output is not
+yet supported and fails explicitly rather than losing route segments.
+
+The original native default remains available while compound quality is being
+validated. On the DPSK-V4.1 111-node/140-edge diagnostic, all edges were routed
+by ELK and compilation passed, but static audit still reported 122 errors
+(100 crossings). This is not a visually accepted replacement. Shared-state
+placement and global routing still need refinement; do not claim that selecting
+ELK alone solves those failures or that multi-page output is mandatory.
 
 ## Merge acceptance
 

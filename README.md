@@ -12,6 +12,7 @@ The skill is designed for source-level model analysis rather than generic presen
 - Generated ASCII topology contracts for review before geometry is created
 - An independent, digest-bound topology review gate
 - Native and ELK-based deterministic layout
+- Compound ELK routing for ordinary cross-region edges, with explicit routing coverage metadata
 - Editable Draw.io compilation
 - Static delivery audits and rendered SVG checks
 - Incremental layout and focused local-revision workflows
@@ -82,6 +83,12 @@ python3 scripts/run_compiler_pipeline.py path/to/architecture.json \
 ```
 
 The pipeline deliberately stops at the topology-review gate when a valid independent review is absent. See [`references/topology-review-workflow.md`](references/topology-review-workflow.md) for the review procedure and [`references/strict-delivery-contract.md`](references/strict-delivery-contract.md) for final acceptance requirements.
+
+`--layout-engine elk` automatically uses compound ELK when ordinary edges cross
+regions; `--layout-engine elk-compound` requests it explicitly. It does not fall
+back to native routing. Compound layout currently requires full reflow and is
+still undergoing real-model quality validation; successful generation is not
+visual acceptance. See the layout adapter reference for limitations and results.
 
 ## Repository layout
 

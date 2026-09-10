@@ -728,9 +728,20 @@ def plan(
     defer_hierarchy_arrows: bool = False,
     layout_engine: str = "native",
 ) -> dict:
-    if layout_engine not in {"native", "elk"}:
+    if layout_engine not in {"native", "elk", "elk-compound"}:
         raise ValueError(f"unknown layout engine {layout_engine!r}")
     data = project_active_view(data)
+    needs_compound = any(
+        edge.get('kind') != 'expand' and (
+            data['nodes'][edge['source']]['region'] != data['nodes'][edge['target']]['region']
+            or not data['regions'][data['nodes'][edge['source']]['region']].get('operator_sequences')
+        ) for edge in data.get('edges', {}).values()
+    )
+    if layout_engine == 'elk-compound' or (layout_engine == 'elk' and needs_compound):
+        from compound_layout import plan_compound
+        if previous_layout is not None:
+            raise ValueError('compound ELK currently requires full reflow; previous-layout preservation is unsupported')
+        return plan_compound(data, architecture_sha256, state, defer_hierarchy_arrows)
     regions, nodes, edges = data["regions"], data["nodes"], data.get("edges", {})
     children: dict[str | None, list[str]] = {None: []}
     for region_id, region in regions.items():
@@ -844,7 +855,7 @@ def plan(
     auto_place_expansion_regions(data, layout)
     _apply_incremental(layout, previous_layout, state, {item: node["region"] for item, node in nodes.items()})
     ordinary_edges = {edge_id: edge for edge_id, edge in edges.items() if edge.get("kind") != "expand"}
-    layout["edges"] = _route_edges(ordinary_edges, layout["nodes"])
+    layout["edges"] = _route_edges(ordinary_edges, layout["nodes"]) if layout_engine == 'native' else {}
     if layout_engine == "elk":
         for region_id, result in elk_results.items():
             if not result["edges"]:
@@ -869,6 +880,8 @@ def plan(
                     for x, y in route["waypoints"]
                 ]
                 layout["edges"][edge_id] = translated
+        if set(layout['edges']) != set(ordinary_edges):
+            raise ValueError('ELK coverage incomplete; refusing native routing fallback')
     if state:
         for edge_id, override in state.get("layout_overrides", {}).get("edges", {}).items():
             if edge_id in layout["edges"] and isinstance(override, dict):
@@ -888,6 +901,8 @@ def plan(
             "elkjs_version": next(iter(versions)),
             "elk_region_ids": sorted(elk_results),
             "macro_engine": "model-sketcher-native",
+            "elk_edge_ids": sorted(layout['edges']),
+            "native_routed_edge_ids": [],
             "region_candidate_selection": {
                 region_id: result["engine"].get("candidate_selection", {})
                 for region_id, result in elk_results.items()
@@ -904,7 +919,7 @@ def main() -> int:
     parser.add_argument("output", type=Path)
     parser.add_argument("--previous-layout", type=Path)
     parser.add_argument("--state", type=Path)
-    parser.add_argument("--layout-engine", choices=("native", "elk"), default="native")
+    parser.add_argument("--layout-engine", choices=("native", "elk", "elk-compound"), default="native")
     parser.add_argument(
         "--defer-hierarchy-arrows",
         action="store_true",
@@ -934,7 +949,7 @@ def main() -> int:
         return 1
     args.output.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
     print(
-        f"layout: PASS ({len(output['nodes'])} nodes, {len(output['edges'])} edges, "
+        f"layout: GENERATED; strict/visual audits pending ({len(output['nodes'])} nodes, {len(output['edges'])} edges, "
         f"{len(output['hierarchy_arrows'])} hierarchy arrows)"
     )
     return 0
