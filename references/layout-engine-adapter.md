@@ -14,7 +14,7 @@ Use a mature graph layout engine for node placement and ordinary orthogonal
 routing. Keep semantic view projection, Draw.io serialization, and delivery
 auditing as separate stages.
 
-The default adapter uses vendored `elkjs` `0.12.0` and a global compound graph:
+The default adapter uses vendored `elkjs` `0.12.0` and one global compound graph:
 
 ```text
 architecture IR -> view projection -> ELK problem -> global geometry
@@ -40,6 +40,13 @@ For compatibility only, hidden `--layout-engine elk` and
 different modes and must not be presented as configuration choices.
 Native and hybrid compiler backends have been removed; `native` is rejected.
 No ordinary edge may silently fall back to a hand-written router.
+
+This is one hierarchy-aware ELK solve, not a global pass followed by independent
+per-module solves. The root container receives macro preferences while nested
+region containers receive their local ordering, spacing, alignment and port
+preferences in the same problem. A second independent local pass could invalidate
+cross-region ports and routes and is therefore only a focused diagnostic, never
+the compiler path.
 
 The ELK problem contains only stable node IDs, measured node boxes, directed
 edges, measured edge labels, port-side/order constraints, spacing, and optional
@@ -129,6 +136,13 @@ Keep `layout_overrides` for exact geometry after ELK. Both use stable IR IDs;
 neither modifies operators, dependencies, source coverage, or semantic review.
 The supported hints are:
 
+- `macro.direction`: root arrangement preference (`up`, `down`, `left`, or
+  `right`) for top-level region containers.
+- `macro.spacing`: positive finite pixels for `region`, `layer`, `edge_region`,
+  and `edge`; these map to root ELK spacing options and are the first choice for
+  making top-level blocks more compact or giving cross-region routes more air.
+- `macro.alignment`: root Brandes-Koepf alignment preference, with the same
+  accepted values as region alignment.
 - `region_order`: every visible region once; an input-order preference.
 - `regions.<id>.node_order`: every direct visible node in that region once;
   activates ELK model-order preference. Use it to suggest parallel branch order,
@@ -153,6 +167,7 @@ For a region with input, query/key projections and a join:
 
 ```json
 {"layout_hints": {
+  "macro": {"direction": "right", "spacing": {"region": 80, "layer": 110}},
   "regions": {"attention": {
     "node_order": ["input", "query", "key", "join"],
     "spacing": {"node": 100, "layer": 80},
@@ -170,6 +185,10 @@ previous layout, even when the architecture digest is unchanged: generate a
 candidate without `--previous-layout`, then validate existing precision edits
 against it. Hints are not consumed by the precision-only reuse path. Old layouts
 without recorded hints can be reused only with empty hints.
+
+Macro hints do not express arbitrary rows, grids, adjacency constraints, or
+reserved hierarchy-arrow corridors. Such arrangements remain a validated
+macro-planning or precision task; do not claim ELK guaranteed them.
 
 Precision overrides continue to apply after ELK, so old absolute coordinates
 can oppose a new spacing or ordering preference. Inspect the candidate diff and

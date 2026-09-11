@@ -21,6 +21,16 @@ def fork():
     }
 
 
+def two_regions():
+    data = fork()
+    data['regions']['s'] = {'label': 'Output', 'parent': None}
+    data['nodes']['e'] = {'region': 's', 'kind': 'operator', 'label': 'e'}
+    data['nodes']['f'] = {'region': 's', 'kind': 'operator', 'label': 'f'}
+    data['edges']['ef'] = {'source': 'e', 'target': 'f', 'kind': 'tensor'}
+    data['edges']['de'] = {'source': 'd', 'target': 'e', 'kind': 'tensor'}
+    return data
+
+
 class LayoutIntentsTests(unittest.TestCase):
     def test_problem_uses_real_elk_options_without_changing_semantics(self):
         data = fork()
@@ -58,6 +68,23 @@ class LayoutIntentsTests(unittest.TestCase):
         gap = lambda l: abs(l['nodes']['b']['x'] - l['nodes']['c']['x'])
         self.assertGreater(gap(wide), gap(default))
 
+    def test_macro_hints_reach_root_elk_and_change_region_axis(self):
+        data = two_regions()
+        hints = {'macro': {'direction': 'right', 'spacing': {'region': 180, 'layer': 220},
+                           'alignment': 'RIGHTUP'},
+                 'region_order': ['r', 's']}
+        sizes = {n: node_size(v, 18) for n, v in data['nodes'].items()}
+        _, graph = build_graph(data, sizes, 20, hints)
+        self.assertEqual(graph['layoutOptions']['elk.direction'], 'RIGHT')
+        self.assertEqual(graph['layoutOptions']['elk.spacing.nodeNode'], '180.0')
+        self.assertEqual(graph['layoutOptions']['elk.layered.spacing.nodeNodeBetweenLayers'], '220.0')
+        self.assertEqual(graph['layoutOptions']['elk.layered.nodePlacement.bk.fixedAlignment'], 'RIGHTUP')
+        horizontal = plan_compound(data, 'digest', {'layout_hints': hints})
+        centers = lambda layout, rid: (layout['regions'][rid]['x'] + layout['regions'][rid]['w'] / 2,
+                                       layout['regions'][rid]['y'] + layout['regions'][rid]['h'] / 2)
+        first, second = centers(horizontal, 'r'), centers(horizontal, 's')
+        self.assertGreater(abs(second[0] - first[0]), abs(second[1] - first[1]))
+
     def test_changed_hints_cannot_silently_reuse_layout(self):
         from test_precision_layout import fixture
         data, base = fixture()
@@ -66,7 +93,9 @@ class LayoutIntentsTests(unittest.TestCase):
                           previous_layout=base)
 
     def test_bad_hints_fail_before_running_elk(self):
-        for hints in [False, {'unknown': 1}, {'regions': {'missing': {}}},
+        for hints in [False, {'unknown': 1}, {'macro': {'direction': 'diagonal'}},
+                      {'macro': {'spacing': {'region': 0}}}, {'macro': {'alignment': []}},
+                      {'regions': {'missing': {}}},
                       {'regions': {'r': {'node_order': ['a', 'b']}}},
                       {'regions': {'r': {'spacing': {'node': float('nan')}}}},
                       {'regions': {'r': {'alignment': []}}},

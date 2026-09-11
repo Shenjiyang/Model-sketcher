@@ -10,7 +10,14 @@ SPACING = {
     'edge_node': ('elk.spacing.edgeNode', 'elk.layered.spacing.edgeNodeBetweenLayers'),
     'edge': ('elk.spacing.edgeEdge', 'elk.layered.spacing.edgeEdgeBetweenLayers'),
 }
+MACRO_SPACING = {
+    'region': ('elk.spacing.nodeNode',),
+    'layer': ('elk.layered.spacing.nodeNodeBetweenLayers',),
+    'edge_region': ('elk.spacing.edgeNode', 'elk.layered.spacing.edgeNodeBetweenLayers'),
+    'edge': ('elk.spacing.edgeEdge', 'elk.layered.spacing.edgeEdgeBetweenLayers'),
+}
 ALIGNMENTS = {'LEFTUP', 'RIGHTUP', 'LEFTDOWN', 'RIGHTDOWN', 'BALANCED'}
+DIRECTIONS = {'up': 'UP', 'down': 'DOWN', 'left': 'LEFT', 'right': 'RIGHT'}
 
 
 def mapping(value, name):
@@ -27,8 +34,21 @@ def permutation(value, members, name):
 
 def validate_hints(data, hints, *, projected=True):
     hints = {} if hints is None else mapping(hints, 'layout_hints')
-    if set(hints) - {'region_order', 'regions', 'edge_ports', 'port_order'}:
+    if set(hints) - {'macro', 'region_order', 'regions', 'edge_ports', 'port_order'}:
         raise ValueError('unsupported layout_hints field')
+    macro = mapping(hints.get('macro', {}), 'layout_hints.macro')
+    if set(macro) - {'direction', 'spacing', 'alignment'}:
+        raise ValueError('unsupported layout_hints.macro field')
+    if 'direction' in macro and (not isinstance(macro['direction'], str)
+                                 or macro['direction'] not in DIRECTIONS):
+        raise ValueError('macro.direction must be up, down, left, or right')
+    if 'alignment' in macro and (not isinstance(macro['alignment'], str)
+                                 or macro['alignment'] not in ALIGNMENTS):
+        raise ValueError('unsupported macro alignment')
+    for key, value in mapping(macro.get('spacing', {}), 'macro.spacing').items():
+        if key not in MACRO_SPACING or (not isinstance(value, (int, float)) or isinstance(value, bool)
+                                        or not math.isfinite(value) or value <= 0):
+            raise ValueError(f'invalid macro spacing {key}; use positive finite pixels')
     if 'region_order' in hints:
         if projected:
             permutation(hints['region_order'], data['regions'], 'region_order')
@@ -95,6 +115,19 @@ def apply_problem_hints(problem, hints):
             problem['edges'][eid][role + '_order'] = index
 
 
+def apply_macro_hints(graph, hints):
+    """Apply root-container preferences without changing semantic containment."""
+    macro = hints.get('macro', {})
+    options = graph['layoutOptions']
+    if 'direction' in macro:
+        options['elk.direction'] = DIRECTIONS[macro['direction']]
+    for key, value in macro.get('spacing', {}).items():
+        for option in MACRO_SPACING[key]:
+            options[option] = str(float(value))
+    if 'alignment' in macro:
+        options['elk.layered.nodePlacement.bk.fixedAlignment'] = macro['alignment']
+
+
 def apply_region_hints(containers, hints):
     for rid, config in hints.get('regions', {}).items():
         container = containers[rid]
@@ -128,6 +161,6 @@ def verify_ports(data, layout, hints):
     if hints:
         layout.setdefault('layout_engine', {})['layout_intent_status'] = {
             'port_sides_and_order': 'verified',
-            'region_and_node_order': 'ELK input preference; inspect resulting geometry',
+            'macro_region_and_node_order': 'ELK input preference; inspect resulting geometry',
             'spacing_and_alignment': 'ELK options; normal geometry audits still required',
         }

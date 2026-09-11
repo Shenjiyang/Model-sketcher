@@ -9,7 +9,8 @@ from pathlib import Path
 
 from plan_layout_elk import elk_graph, problem_from_region, convert_result
 from layout_progress import phase, progress
-from layout_intents import validate_hints, apply_problem_hints, apply_region_hints, verify_ports
+from layout_intents import (validate_hints, apply_problem_hints, apply_macro_hints,
+                            apply_region_hints, verify_ports)
 
 
 def build_graph(data, sizes, title_font, hints=None):
@@ -33,8 +34,6 @@ def build_graph(data, sizes, title_font, hints=None):
         len(order) != len(data['regions']) or set(order) != set(data['regions'])
     ):
         raise ValueError('region_order must list every projected region exactly once')
-    if 'region_order' in hints:
-        graph['layoutOptions']['elk.layered.considerModelOrder.strategy'] = 'NODES_AND_EDGES'
     reserved = {graph['id'], *('region:' + rid for rid in data['regions'])}
     if reserved.intersection(data['nodes']):
         raise ValueError('compound graph container IDs collide with semantic node IDs')
@@ -64,6 +63,10 @@ def build_graph(data, sizes, title_font, hints=None):
         parent = region.get('parent')
         target = graph if parent is None else containers[parent]
         target['children'].append(containers[rid])
+    # Root macro preferences must not leak into nested operator containers.
+    if 'region_order' in hints:
+        graph['layoutOptions']['elk.layered.considerModelOrder.strategy'] = 'NODES_AND_EDGES'
+    apply_macro_hints(graph, hints)
     return problem, graph
 
 
