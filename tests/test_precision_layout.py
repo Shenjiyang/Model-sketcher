@@ -85,6 +85,20 @@ class PrecisionTests(unittest.TestCase):
             with self.subTest(points=points), self.assertRaisesRegex(ValueError, 'waypoints'):
                 apply_precision(data, base, {'edges': {'ab': {'waypoints': points}}})
 
+    def test_subpixel_port_reconstruction_noise_is_accepted(self):
+        data, base = fixture()
+        # Six-decimal normalized ports can differ by this amount after scaling by node width.
+        base['edges']['ab']['target_port']['position'] = 0.5000013865
+        out = apply_precision(data, base, {})
+        points = points_for(data['edges']['ab'], out['edges']['ab'], out['nodes'])
+        self.assertAlmostEqual(abs(points[0][0] - points[-1][0]), 0.00011092, places=8)
+
+    def test_visible_diagonal_segment_is_rejected(self):
+        data, base = fixture()
+        base['edges']['ab']['target_port']['position'] = 0.50025
+        with self.assertRaisesRegex(ValueError, 'non-orthogonal precision route: ab'):
+            apply_precision(data, base, {})
+
     def test_previous_layout_cannot_ignore_frozen_policy(self):
         data, base = fixture()
         with self.assertRaisesRegex(ValueError, 'frozen'):

@@ -7,6 +7,9 @@ from junction_routes import points_for, port_point
 from plan_layout_elk import _drop_collinear, _validate_endpoint_direction, _segment_hits_box
 
 
+ORTHOGONAL_TOLERANCE = 0.01
+
+
 def finite(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
@@ -109,7 +112,10 @@ def apply_precision(data, base, overrides):
         points = points_for(edge, route, out['nodes'])
         if any(len(p) != 2 or not all(finite(v) for v in p) for p in points):
             raise ValueError(f'invalid precision waypoints: {eid}')
-        if any(a[0] != b[0] and a[1] != b[1] for a, b in zip(points, points[1:])):
+        # Rounded normalized ports can reconstruct an endpoint a fraction of a pixel off-axis.
+        if any(abs(a[0] - b[0]) > ORTHOGONAL_TOLERANCE and
+               abs(a[1] - b[1]) > ORTHOGONAL_TOLERANCE
+               for a, b in zip(points, points[1:])):
             raise ValueError(f'non-orthogonal precision route: {eid}')
         _validate_endpoint_direction(points, route['source_port']['side'], route['target_port']['side'], eid)
         for nid, box in out['nodes'].items():
