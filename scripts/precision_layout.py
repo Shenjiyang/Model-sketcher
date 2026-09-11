@@ -156,4 +156,6 @@ def apply_precision(data, base, overrides):
     # Explicit ports must not be silently rewritten by junction normalization.
     from junction_routes import rail_contracts
     out['junction_rails'] = rail_contracts(data, out)
+    from layout_intents import verify_ports
+    verify_ports(data, out, base.get('layout_engine', {}).get('layout_hints', {}))
     return out

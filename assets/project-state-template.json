@@ -12,6 +12,7 @@
   "accepted_regions": [],
   "blocked_regions": {},
   "region_policies": {},
+  "layout_hints": {},
   "layout_overrides": {
     "regions": {},
     "nodes": {},

@@ -122,9 +122,64 @@ The result remains `acceptance: pending`. Never edit final XML to bypass this
 path, skip reviewer gates, silently fall back to native routing, or call a
 successful geometry adjustment a delivery PASS.
 
-LLM macro guidance may use project-state `layout_hints.region_order`, listing
-each visible region once. This is an input-order preference, not a fixed spatial
-position; inspect the result. Other hints are rejected rather than ignored.
+## Layout intent and precision edits
+
+Prefer project-state `layout_hints` for an arrangement ELK should compute.
+Keep `layout_overrides` for exact geometry after ELK. Both use stable IR IDs;
+neither modifies operators, dependencies, source coverage, or semantic review.
+The supported hints are:
+
+- `region_order`: every visible region once; an input-order preference.
+- `regions.<id>.node_order`: every direct visible node in that region once;
+  activates ELK model-order preference. Use it to suggest parallel branch order,
+  never to manufacture tensor edges or to promise a strict geometric ordering.
+- `regions.<id>.spacing`: positive finite pixel values for `node`, `layer`,
+  `edge_node`, and `edge`. Ordinary and between-layer variants are set together.
+  Only the named region receives these options; labels and strict clearance
+  audits may require more space. Node sizes remain content-derived.
+- `regions.<id>.alignment`: ELK Brandes-Koepf alignment selection (`LEFTUP`,
+  `RIGHTUP`, `LEFTDOWN`, `RIGHTDOWN`, `BALANCED`). This selects an algorithmic
+  preference; it does not pin a chosen set of node centers or absolute coordinates.
+- `edge_ports.<edge-id>.source/target`: boundary side (`north`, `south`, `east`,
+  `west`) for each specified endpoint. Final sides are checked after precision.
+- `port_order.<node-id>`: all visible incident endpoint IDs, written as
+  `source:<edge-id>` or `target:<edge-id>`, each exactly once. The relative order
+  on each side is left-to-right for north/south and top-to-bottom for east/west.
+  This activates `FIXED_ORDER` on that node; the result is checked after ELK
+  conversion and precision. Junction ports retain their separate normalization
+  contract and cannot receive these hints.
+
+For a region with input, query/key projections and a join:
+
+```json
+{"layout_hints": {
+  "regions": {"attention": {
+    "node_order": ["input", "query", "key", "join"],
+    "spacing": {"node": 100, "layer": 80},
+    "alignment": "BALANCED"
+  }},
+  "edge_ports": {"input_to_query": {"source": "north", "target": "south"}},
+  "port_order": {"input": ["source:input_to_query", "source:input_to_key"]}
+}}
+```
+
+The adapter validates IDs and complete orders against the selected view before
+running ELK, and records the hints in `layout_engine.layout_hints`. Unsupported
+intent is rejected rather than ignored. Changing hints invalidates reuse of a
+previous layout, even when the architecture digest is unchanged: generate a
+candidate without `--previous-layout`, then validate existing precision edits
+against it. Hints are not consumed by the precision-only reuse path. Old layouts
+without recorded hints can be reused only with empty hints.
+
+Precision overrides continue to apply after ELK, so old absolute coordinates
+can oppose a new spacing or ordering preference. Inspect the candidate diff and
+revise affected overrides explicitly; do not automatically delete them or copy
+every ELK coordinate into overrides. Conflicting port-side/order overrides fail.
+Use `run_local_revision.py --repair overrides` for exact refinements of a saved
+candidate, then the normal full static/render/visual gates. A hint change alone
+does not require a new semantic Reviewer. Global ELK still receives the complete
+visible graph, with local hints inside its compound containers.
+
 Hierarchy-arrow drawing, text measurement, semantic ownership and style remain
 separate responsibilities. Arbitrary nested multi-section edge output is not
 yet supported and fails explicitly rather than losing route segments.

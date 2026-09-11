@@ -15,6 +15,11 @@ POLICIES = {"preserve", "adaptive", "derived", "frozen"}
 
 def validate_state(state: dict, architecture: dict) -> list[str]:
     errors: list[str] = []
+    from layout_intents import validate_hints
+    try:
+        validate_hints(architecture, state.get('layout_hints'), projected=False)
+    except ValueError as error:
+        errors.append(str(error))
     regions, nodes, edges = architecture.get("regions", {}), architecture.get("nodes", {}), architecture.get("edges", {})
     ordinary_edges = {edge_id: edge for edge_id, edge in edges.items() if edge.get("kind") != "expand"}
     hierarchy_arrows = {edge_id: edge for edge_id, edge in edges.items() if edge.get("kind") == "expand"}

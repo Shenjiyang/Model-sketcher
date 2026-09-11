@@ -9,10 +9,12 @@ from pathlib import Path
 
 from plan_layout_elk import elk_graph, problem_from_region, convert_result
 from layout_progress import phase, progress
+from layout_intents import validate_hints, apply_problem_hints, apply_region_hints, verify_ports
 
 
 def build_graph(data, sizes, title_font, hints=None):
     from plan_layout import region_title_layout
+    hints = validate_hints(data, hints)
     padding = max(42.0, float(data['project'].get('typography', {}).get('ordinary_node_font', 18)) * 2)
     flat = deepcopy(data)
     flat['regions'] = {'all': {'operator_sequences': [
@@ -22,14 +24,10 @@ def build_graph(data, sizes, title_font, hints=None):
         node['region'] = 'all'
     problem = problem_from_region(flat, 'all', sizes)
     problem['canvas_padding'] = 0
+    apply_problem_hints(problem, hints)
     graph = elk_graph(problem)
     graph['id'] = '__elk_root__'
     graph['layoutOptions']['elk.hierarchyHandling'] = 'INCLUDE_CHILDREN'
-    hints = hints or {}
-    if not isinstance(hints, dict):
-        raise ValueError('layout_hints must be an object')
-    if set(hints) - {'region_order'}:
-        raise ValueError('unsupported compound layout hint; supported: region_order')
     order = hints.get('region_order', list(data['regions']))
     if not isinstance(order, list) or any(not isinstance(rid, str) for rid in order) or (
         len(order) != len(data['regions']) or set(order) != set(data['regions'])
@@ -59,6 +57,7 @@ def build_graph(data, sizes, title_font, hints=None):
         }
     for node in graph['children']:
         containers[data['nodes'][node['id']]['region']]['children'].append(node)
+    apply_region_hints(containers, hints)
     graph['children'] = []
     for rid in order:
         region = data['regions'][rid]
@@ -110,6 +109,7 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
     from plan_layout import apply_hierarchy_arrow_overrides
     from junction_routes import normalize_junctions
     overrides = (state or {}).get('layout_overrides', {})
+    hints = validate_hints(data, (state or {}).get('layout_hints'))
     from precision_layout import apply_precision
     policies = (state or {}).get('region_policies', {})
     if any(policy.get('policy') in {'preserve', 'frozen'} if isinstance(policy, dict)
@@ -128,6 +128,10 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
             set(previous_layout.get('edges', {})) != {
                 eid for eid, edge in data['edges'].items() if edge.get('kind') != 'expand'}):
             raise ValueError('precision base layout does not match current architecture/view; regenerate ELK base')
+        recorded_hints = previous_layout.get('layout_engine', {}).get('layout_hints', {})
+        if hints != recorded_hints:
+            raise ValueError('layout_hints changed or were not recorded in this base; rerun without previous-layout '
+                             'to compute a new ELK base, then validate existing precision overrides')
         progress('ELK: REUSED matching previous layout; no Node process started')
         with phase('precision overrides'):
             layout = apply_precision(data, previous_layout, overrides)
@@ -135,6 +139,7 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
             with phase('hierarchy planning'):
                 layout['hierarchy_arrows'] = plan_hierarchy_arrows(data, layout)
                 apply_hierarchy_arrow_overrides(layout, state)
+        verify_ports(data, layout, hints)
         return layout
     font = data['project'].get('typography', {}).get('ordinary_node_font', 18)
     title_font = data['project'].get('typography', {}).get('region_title_font', 20)
@@ -187,6 +192,7 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
         'hierarchy_arrows': {}, 'hierarchy_attachments': {},
         'canvas': {'width': math.ceil(raw['width'] + 40), 'height': math.ceil(raw['height'] + 40)},
         'layout_engine': {'name': 'compound-elk-layered', 'elkjs_version': result['engine']['elkjsVersion'],
+                          **({'layout_hints': deepcopy(hints)} if hints else {}),
                           'elk_region_ids': sorted(regions), 'elk_edge_ids': sorted(ordinary),
                           'native_routed_edge_ids': [], 'macro_engine': 'elk-layered',
                           'route_preflight': quality, 'acceptance': 'pending'},
@@ -206,4 +212,6 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
         with phase('hierarchy planning'):
             layout['hierarchy_arrows'] = plan_hierarchy_arrows(data, layout)
             apply_hierarchy_arrow_overrides(layout, state)
-    return normalize_junctions(data, layout)
+    layout = normalize_junctions(data, layout)
+    verify_ports(data, layout, hints)
+    return layout
