@@ -78,8 +78,10 @@ def validate_compiler_provenance(
     if engine.get("native_routed_edge_ids") not in (None, []):
         errors.append("layout contains native-routed ordinary edges")
     preflight = engine.get("route_preflight", {})
-    if not isinstance(preflight, dict) or preflight.get("route_errors") != []:
+    if preflight and (not isinstance(preflight, dict) or preflight.get("route_errors") != []):
         errors.append("layout route preflight has unresolved errors")
+    if not preflight and "precision_edits" not in geometry:
+        errors.append("layout lacks route preflight and validated precision-edit provenance")
     try:
         if diagram.read_bytes() != expected_drawio(architecture, layout):
             errors.append(

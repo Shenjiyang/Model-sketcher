@@ -89,6 +89,24 @@ class CompletionGateTests(unittest.TestCase):
                 validate_compiler_provenance(diagram, architecture, layout, errors)
             self.assertTrue(any("do not match" in error for error in errors))
 
+    def test_precision_layout_may_defer_to_strict_audit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            diagram = root / "model.drawio"
+            architecture = root / "architecture.json"
+            layout = root / "layout.json"
+            diagram.write_bytes(b"compiler xml")
+            architecture.write_text("{}")
+            layout.write_text(json.dumps({
+                "layout_engine": {"name": "compound-elk-layered",
+                                  "native_routed_edge_ids": []},
+                "precision_edits": {"nodes": {}, "regions": {}, "edges": {}},
+            }))
+            errors = []
+            with patch("complete_delivery.expected_drawio", return_value=b"compiler xml"):
+                validate_compiler_provenance(diagram, architecture, layout, errors)
+            self.assertEqual([], errors)
+
 
 if __name__ == "__main__":
     unittest.main()
