@@ -17,6 +17,7 @@ from topology_review_common import (
 from render_topology_contract import render
 from validate_architecture_ir import load, validate
 from audit_topology_review import validate_review
+from semantic_consistency import RULESET, lint
 
 
 def build_pending_review(architecture: Path, topology: Path, trigger: str) -> dict:
@@ -61,6 +62,13 @@ def build_pending_review(architecture: Path, topology: Path, trigger: str) -> di
             "did_not_edit_semantic_inputs": False,
         },
         "source_artifacts": source_artifacts,
+        "semantic_expectations": {
+            "ruleset": RULESET,
+            "regions": {},
+            "branch_claims": [],
+            "lint_resolutions": {},
+        },
+        "semantic_review_questions": lint(data),
         "independent_source_inventory": {
             "status": "pending",
             "paths": [],

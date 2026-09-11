@@ -4,6 +4,12 @@ Read this reference when creating or revising the pre-layout topology of a compi
 
 The generated ASCII contract is a review artifact, not a second semantic source. Author facts in `architecture.json`, generate the contract, review it, and change the IR when it is wrong. Never hand-edit generated text and leave the IR unchanged.
 
+Sequence membership never authorizes an invented tensor dependency. Trace
+producers and consumers first, then declare source-backed lanes; use the separate
+edge/lane helpers and review checks in
+[semantic-consistency-review.md](semantic-consistency-review.md). A desired
+placement order or Python statement order is not evidence of tensor flow.
+
 After a cold-start generation or any semantic/source revision, run the independent checkpoint in [topology-review-workflow.md](topology-review-workflow.md). The Reviewer must decide whether the ASCII alone can reconstruct the Level-0 synopsis, Level-1 templates, every detail sequence, branch/merge and state lifecycle, and all cross-level mappings. Do not repeat that Reviewer for coordinate, route, hierarchy-arrow, typography, color, density, or render-only work; reuse the digest-bound review while the canonical architecture meaning, exact ASCII bytes, and pinned source bytes remain unchanged.
 
 The generator emits `DETAIL INFORMATION GAIN`, `RUNTIME VARIANT COVERAGE`, and `STATE / CACHE LIFECYCLES` before ownership and geometry. Use them to reject decorative detail, a collapsed prefill/decode branch, or a false `write -> storage -> module output` chain without opening Draw.io.

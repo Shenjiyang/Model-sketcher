@@ -156,6 +156,24 @@ def complete_review(review: dict, data: dict) -> dict:
         "reviewer_id": "reviewer-agent-002",
         "verdict": "pass",
     })
+    # Only synthetic test evidence may derive expectations from the test IR.
+    from semantic_consistency import RULESET, tensor_shape
+    review["semantic_expectations"] = {
+        "ruleset": RULESET,
+        "regions": {rid: {
+            "source_refs": [{"evidence_id": "code", "line_start": 1, "line_end": 3}],
+            "reason": "The fixture source returns the single projected input tensor.",
+            "incoming_dependencies": [[e["source"], e["target"], tensor_shape(e)]
+                                      for e in data["edges"].values() if e.get("kind") == "tensor"
+                                      and data["nodes"][e["target"]]["region"] == rid],
+            "operators": {nid: [node["operator_contract"].get("op_type"),
+                                node["operator_contract"].get("shape_rule")]
+                          for nid, node in data["nodes"].items() if node.get("region") == rid
+                          and node.get("operator_contract")
+                          and node["operator_contract"].get("classification") != "expanded-elsewhere"},
+        } for rid in region_ids},
+        "branch_claims": [], "lint_resolutions": {},
+    }
     review["reviewer_attestation"] = {
         "independent_from_builder": True,
         "source_inventory_created_before_ir_comparison": True,

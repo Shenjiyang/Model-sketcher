@@ -2,6 +2,12 @@
 
 Use this checkpoint to establish semantic accuracy before layout. It is event-triggered, not a per-render or per-layout review.
 
+Read [semantic-consistency-review.md](semantic-consistency-review.md) before
+authoring or accepting a review. The existing Reviewer must also supply complete
+source-derived dependency/type expectations, branch claims and lint resolutions.
+The finalizer and every downstream reuse gate compare them with the actual IR;
+natural-language claims alone do not establish parallelism or shape correctness.
+
 ## When a new review is required
 
 Run an independent reviewer for:

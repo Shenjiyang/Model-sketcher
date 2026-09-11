@@ -596,6 +596,8 @@ def validate_review(
     coverage_paths = validate_source_inventory(data, review, evidence, errors)
     validate_semantic_review(data, review, evidence, coverage_paths, errors)
     validate_reconstruction_review(data, review, errors)
+    from semantic_consistency import validate_expectations
+    errors.extend(validate_expectations(data, review, architecture))
     if review.get("verdict") != "pass":
         errors.append("topology review verdict must be pass")
     return sorted(set(errors))
