@@ -177,6 +177,10 @@ def main() -> int:
         print("Official export succeeded, but rendered geometry has hard failures.")
         return 1
     print("Inspect the full overview and the manifest's detail_regions manually.")
+    print(
+        "DRAFT/BLOCKED: rendered audit PASS is not final delivery; record visual-review.json "
+        "and run complete_delivery.py to obtain a DELIVERABLE receipt."
+    )
     return 0
 
 

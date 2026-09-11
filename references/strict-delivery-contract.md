@@ -15,7 +15,9 @@ Keep these beside the diagram or in its project source directory:
 5. a shape ledger containing producer, consumer, shape transition, parameter dimensions, state/cache lifetime, and evidence status;
 6. the editable `.drawio`;
 7. its `*.audit.json` manifest;
-8. official Draw.io overview, detail, and SVG acceptance exports produced only after the contract and static audits pass.
+8. official Draw.io overview, detail, and SVG acceptance exports produced only after the contract and static audits pass;
+9. `visual-review.json`, binding the agent's full-canvas and detail-crop inspection to the official render bytes;
+10. `*.delivery-receipt.json`, produced by the completion gate after every prior artifact and audit passes.
 
 A single temporary low-scale official diagnostic export may be used immediately after compile to reject a bad macro composition. Keep it outside the canonical deliverables, label it diagnostic, and never use it as rendered or manual acceptance. Follow [layout-failure-recovery.md](layout-failure-recovery.md) when the first static audit is large or concentrated.
 
@@ -103,3 +105,5 @@ python3 scripts/render_drawio.py model.drawio --manifest model.audit.json \
 `--legacy-project` exists only to inspect an older diagram while migrating it. A run using that flag cannot be reported as strict-delivery PASS or final visual acceptance.
 
 After export, inspect the full overview and every declared detail region. Machine PASS never replaces this review. Do not copy previews into the canonical project location until the rendered audit passes and manual inspection finds no clipping, ambiguous ownership, avoidable detours, overlapping labels, or excessive dead space.
+
+Finally run the certification command documented in [completion-gate.md](completion-gate.md). A final answer may call the diagram complete only when that command prints `DELIVERABLE`. Files without a current receipt remain drafts even when Draw.io exports them successfully.

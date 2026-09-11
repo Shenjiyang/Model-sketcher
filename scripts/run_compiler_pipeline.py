@@ -204,7 +204,8 @@ def main() -> int:
             return result.returncode
         update_state(args.state, "delivery-audit", "static-drawio-audit")
         print("gate 5b: PASS (static Draw.io audit)")
-    print("gate 6: PENDING (strict delivery and official rendered review)")
+    print("gate 6: PENDING (strict delivery, official render, visual review, and completion receipt)")
+    print("DRAFT/BLOCKED: do not claim completion before complete_delivery.py returns DELIVERABLE")
     return 0
 
 

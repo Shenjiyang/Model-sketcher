@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "verdict": "pending",
+  "rendered_svg_sha256": "replace-after-official-render",
+  "overview": {
+    "path": "replace-with-official-overview-png",
+    "sha256": "replace-after-inspection"
+  },
+  "detail_crops": [
+    {
+      "name": "replace-with-manifest-detail-region-name",
+      "path": "replace-with-inspected-detail-crop",
+      "sha256": "replace-after-inspection"
+    },
+    {
+      "name": "replace-with-second-manifest-detail-region-name",
+      "path": "replace-with-inspected-detail-crop",
+      "sha256": "replace-after-inspection"
+    }
+  ],
+  "checklist": {
+    "full_canvas_readable": false,
+    "hierarchy_and_ownership_clear": false,
+    "main_path_traceable": false,
+    "detail_text_readable": false,
+    "detail_granularity_consistent": false,
+    "routes_and_labels_unambiguous": false,
+    "density_and_whitespace_acceptable": false,
+    "no_blocking_visual_defects": false
+  },
+  "findings": [],
+  "blocking_findings": []
+}
