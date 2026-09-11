@@ -49,10 +49,17 @@ python scripts/project_intake.py plan project-intake.json --architecture archite
 ```
 
 The selection file contains only changed choice fields. Omit it to accept the
-displayed defaults. The agent records the user's real response, never manufactures
-one. The host controls whether a popup is available; this skill does not install a
-GUI or claim to authenticate a click. The confirmation digest detects subsequent
-edits, not identity forgery by another process with the same file permissions.
+displayed defaults. Confirmation records one machine-checked intent: accepting
+defaults, a non-empty custom selection, an explicit instruction to start
+immediately, or reuse of confirmed choices. Ordinary task wording such as
+"draw a detailed model diagram" is not confirmation and the CLI rejects it; the
+agent must present the form and cite the subsequent response. Short responses
+such as "yes", "OK", or their translated equivalent are accepted only as the
+quoted response associated with that confirmation source. The agent records the
+user's real response, never manufactures one. The host controls whether a popup
+is available; this skill does not install a GUI or authenticate a click. The
+confirmation digest detects subsequent edits, not identity forgery by another
+process with the same file permissions.
 
 Keep `project-intake.json` beside canonical `architecture.json`. Layout/compile
 entrypoints and strict delivery/render gates reject absent, proposed, changed or

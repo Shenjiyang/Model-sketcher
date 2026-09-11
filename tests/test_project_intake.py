@@ -21,6 +21,30 @@ class ProjectIntakeTests(unittest.TestCase):
         accepted['choices']['depth'] = 'module-summary'
         self.assertTrue(any('changed' in error for error in validate(accepted)))
 
+    def test_generic_task_request_cannot_self_confirm_defaults(self):
+        with self.assertRaisesRegex(ValueError, 'ordinary task wording'):
+            confirm(propose('test-model'), {}, 'initial-user-message',
+                    'Draw a complete detailed model architecture diagram')
+
+    def test_explicit_start_and_short_form_response_are_confirmations(self):
+        immediate = confirm(propose('test-model'), {}, 'user-1', 'Start immediately')
+        self.assertEqual(immediate['confirmation']['intent'], 'start-immediately')
+        accepted = confirm(propose('test-model'), {}, 'user-2', 'OK')
+        self.assertEqual(accepted['confirmation']['intent'], 'accept-defaults')
+
+    def test_custom_selection_records_changed_fields(self):
+        accepted = confirm(propose('test-model'), {'files': ['drawio']},
+                           'user-2', 'Only export Draw.io')
+        self.assertEqual(accepted['confirmation']['intent'], 'custom-selection')
+        self.assertEqual(accepted['confirmation']['changed_fields'], ['files'])
+
+    def test_explicit_reconfirmation_migrates_schema_v1(self):
+        old = propose('test-model')
+        old['schema_version'] = 1
+        accepted = confirm(old, {}, 'user-3', 'Reuse the previous confirmed choices')
+        self.assertEqual(accepted['schema_version'], 2)
+        self.assertEqual(accepted['confirmation']['intent'], 'reuse-confirmed')
+
     def test_unknown_choices_and_whole_model_shortlists_are_rejected(self):
         for change in ({'engine': 'native'}, {'modules': ['moe']},
                        {'delivery_views': ['unknown']}, {'coverage': 'selected-modules'}):

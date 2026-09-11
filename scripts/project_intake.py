@@ -18,11 +18,28 @@ OPTIONS = {
 }
 MULTIPLE = {'delivery_views', 'files'}
 ANALYSIS = 'complete-canonical-source-analysis'
+CONFIRMATION_INTENTS = {
+    'accept-defaults', 'custom-selection', 'start-immediately', 'reuse-confirmed',
+}
+DEFAULT_ACK = (
+    'use defaults', 'accept defaults', 'default is fine',
+    '\u6309\u9ed8\u8ba4', '\u63a5\u53d7\u9ed8\u8ba4', '\u9ed8\u8ba4\u5373\u53ef', '\u9ed8\u8ba4\u5c31\u884c',
+)
+START_ACK = (
+    'start immediately', 'go ahead', 'begin now',
+    '\u76f4\u63a5\u5f00\u59cb', '\u7acb\u5373\u5f00\u59cb', '\u5f00\u59cb\u5427', '\u770b\u7740\u505a',
+    '\u4e0d\u7528\u95ee', '\u65e0\u9700\u786e\u8ba4',
+)
+REUSE_ACK = (
+    'reuse confirmed', 'reuse the previous', 'continue with the previous',
+    '\u6cbf\u7528\u4e4b\u524d', '\u7ee7\u7eed\u4e4b\u524d', '\u6cbf\u7528\u5df2\u786e\u8ba4',
+)
+EXACT_ACK = {'yes', 'ok', 'confirm', '\u53ef\u4ee5', '\u786e\u8ba4', '\u540c\u610f'}
 
 
 def propose(model):
     return {
-        'schema_version': 1, 'model_target': model, 'analysis_policy': ANALYSIS,
+        'schema_version': 2, 'model_target': model, 'analysis_policy': ANALYSIS,
         'choices': {'execution': 'autonomous', 'coverage': 'whole-model',
                     'depth': 'logical-operators', 'organization': 'hierarchy-master',
                     'delivery_views': ['algorithm'], 'files': ['drawio', 'png', 'svg'],
@@ -40,7 +57,7 @@ def validate(intake, confirmed=True):
     if not isinstance(intake, dict):
         return ['intake must be an object']
     errors = []
-    if intake.get('schema_version') != 1 or intake.get('analysis_policy') != ANALYSIS:
+    if intake.get('schema_version') != 2 or intake.get('analysis_policy') != ANALYSIS:
         errors.append('intake must retain complete canonical source analysis independently of delivery views')
     if not isinstance(intake.get('model_target'), str) or not intake['model_target'].strip():
         errors.append('intake model_target is required')
@@ -78,21 +95,51 @@ def validate(intake, confirmed=True):
             for key in ('source_ref', 'user_quote'):
                 if not isinstance(receipt.get(key), str) or not receipt[key].strip():
                     errors.append(f'intake confirmation {key} is required')
+            if receipt.get('intent') not in CONFIRMATION_INTENTS:
+                errors.append('intake confirmation requires a recognized user intent')
+            changed = receipt.get('changed_fields')
+            if (not isinstance(changed, list) or any(key not in choices for key in changed)
+                    or len(set(changed)) != len(changed)):
+                errors.append('intake confirmation changed_fields is invalid')
+            elif receipt.get('intent') == 'custom-selection' and not changed:
+                errors.append('custom-selection confirmation requires changed choice fields')
+            elif receipt.get('intent') != 'custom-selection' and changed:
+                errors.append('only custom-selection confirmation may change choice fields')
             if receipt.get('payload_sha256') != payload_digest(intake):
                 errors.append('intake changed after confirmation; reconfirm the changed choices')
     return errors
+
+
+def confirmation_intent(changes, quote):
+    if changes:
+        return 'custom-selection'
+    normalized = ' '.join(quote.casefold().strip().split())
+    if normalized in EXACT_ACK or any(phrase in normalized for phrase in DEFAULT_ACK):
+        return 'accept-defaults'
+    if any(phrase in normalized for phrase in START_ACK):
+        return 'start-immediately'
+    if any(phrase in normalized for phrase in REUSE_ACK):
+        return 'reuse-confirmed'
+    raise ValueError(
+        'ordinary task wording is not intake confirmation; present the option form and cite '
+        'the user response, or cite an explicit instruction to accept defaults/start immediately/reuse choices'
+    )
 
 
 def confirm(intake, changes, source, quote):
     result = deepcopy(intake)
     if not isinstance(changes, dict):
         raise ValueError('selection must be an object of choice fields')
+    intent = confirmation_intent(changes, quote)
+    # Reconfirmation is the explicit migration path for pre-receipt schema-v1 intake files.
+    result['schema_version'] = 2
     result['choices'].update(changes)
     result['status'] = 'confirmed'
     errors = validate(result, confirmed=False)
     if errors:
         raise ValueError('; '.join(errors))
-    result['confirmation'] = {'source_ref': source, 'user_quote': quote,
+    result['confirmation'] = {'source_ref': source, 'user_quote': quote, 'intent': intent,
+                              'changed_fields': sorted(changes),
                               'payload_sha256': payload_digest(result)}
     errors = validate(result)
     if errors:
