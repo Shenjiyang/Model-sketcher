@@ -23,6 +23,7 @@ from validate_architecture_ir import edge_display_label
 from visual_edge_labels import visual_edge_label
 from straight_route_refinement import refine_straight_routes
 from focused_layout_quality import candidate_quality
+from layout_progress import progress
 
 
 VALID_DIRECTIONS = {"UP", "DOWN", "LEFT", "RIGHT"}
@@ -406,7 +407,7 @@ def _snap_near_axis_route(
     return candidate
 
 
-def _label_offsets(anchor, normal, label, elk_offset, obstacles, other_routes):
+def _label_offsets(anchor, normal, label, elk_offset, obstacles, other_routes, cached_spans=None):
     """Search bounded transverse free-space boundaries, without clamping ELK."""
     axis = 0 if abs(normal[0]) > 0.5 else 1
     half = float(label["width"] if axis == 0 else label["height"]) / 2 + 8
@@ -414,10 +415,12 @@ def _label_offsets(anchor, normal, label, elk_offset, obstacles, other_routes):
     candidates = {0.0, -160.0, 160.0}
     if math.isfinite(elk_offset) and abs(elk_offset) <= 160:
         candidates.add(elk_offset)
-    spans = [(box["x"], box["x"] + box["w"]) if axis == 0
-             else (box["y"], box["y"] + box["h"]) for box in obstacles]
-    spans.extend((min(a[axis], b[axis]), max(a[axis], b[axis]))
-                 for route in other_routes for a, b in zip(route, route[1:]))
+    spans = cached_spans
+    if spans is None:
+        spans = [(box["x"], box["x"] + box["w"]) if axis == 0
+                 else (box["y"], box["y"] + box["h"]) for box in obstacles]
+        spans.extend((min(a[axis], b[axis]), max(a[axis], b[axis]))
+                     for route in other_routes for a, b in zip(route, route[1:]))
     for low, high in spans:
         for coordinate in (low - half - 1, high + half + 1):
             offset = (coordinate - origin) * sign
@@ -450,6 +453,12 @@ def _label_position(
         raise ValueError(f"ELK edge {edge_id} has zero route length")
     best = None
     traversed = 0.0
+    other_segments = [(a, b) for route in other_routes or [] for a, b in zip(route, route[1:])]
+    spans_by_axis = [
+        [(box[pos], box[pos] + box[size]) for box in obstacles or []]
+        + [(min(a[axis], b[axis]), max(a[axis], b[axis])) for a, b in other_segments]
+        for axis, pos, size in ((0, 'x', 'w'), (1, 'y', 'h'))
+    ]
     for (first, second), length in zip(zip(points, points[1:]), lengths):
         if length <= 0:
             continue
@@ -477,9 +486,16 @@ def _label_position(
             nx, ny = dy / length, -dx / length
             elk_offset = (elk_center[0] - anchor[0]) * nx + (elk_center[1] - anchor[1]) * ny
             offsets = _label_offsets(anchor, (nx, ny), label, elk_offset,
-                                     obstacles or [], other_routes or [])
+                                     obstacles or [], other_routes or [],
+                                     spans_by_axis[0 if abs(nx) > 0.5 else 1])
             for offset in offsets:
+                if best is not None and (offset != 0, abs(offset)) > best[0][:2]:
+                    break
                 center = (anchor[0] + offset * nx, anchor[1] + offset * ny)
+                rank = (offset != 0, abs(offset), math.dist(elk_center, center))
+                # A candidate that cannot replace the winner needs no collision scan.
+                if best is not None and rank >= best[0]:
+                    continue
                 box = {"x": center[0] - float(label["width"]) / 2 - 8,
                        "y": center[1] - float(label["height"]) / 2 - 8,
                        "w": float(label["width"]) + 16, "h": float(label["height"]) + 16}
@@ -487,8 +503,7 @@ def _label_position(
                        and box["y"] < other["y"] + other["h"] and other["y"] < box["y"] + box["h"]
                        for other in obstacles or []):
                     continue
-                if any(_segment_hits_box(a, b, box) for route in other_routes or []
-                       for a, b in zip(route, route[1:])):
+                if any(_segment_hits_box(a, b, box) for a, b in other_segments):
                     continue
                 if any(_segment_hits_box(a, b, box) for a, b in zip(points, points[1:])
                        if (a, b) != (first, second)):
@@ -560,7 +575,8 @@ def convert_result(problem: dict, result: dict) -> dict:
         node_clearance=float(problem.get("spacing", {}).get("edge_node", 28)),
         preserve_existing_crossings=True,
     )
-    for edge_id, declared in problem["edges"].items():
+    progress(f'label placement: RUNNING ({len(problem["edges"])} edges)')
+    for edge_index, (edge_id, declared) in enumerate(problem["edges"].items(), 1):
         edge = raw_edges.get(edge_id)
         sections = edge.get("sections", []) if edge else []
         if len(sections) != 1:
@@ -610,6 +626,8 @@ def convert_result(problem: dict, result: dict) -> dict:
                 ):
                     raise ValueError(f"ELK edge {edge_id} centered label overlaps node {node_id}")
         routes[edge_id] = route
+        if edge_index % 25 == 0 or edge_index == len(problem['edges']):
+            progress(f'label placement: {edge_index}/{len(problem["edges"])}')
     for edge_id, declared in problem["edges"].items():
         route = routes[edge_id]
         points = [

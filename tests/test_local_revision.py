@@ -9,7 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from run_local_revision import (RevisionRun, changed_geometry, focused_layout,
-                                merge_manifest, triage, verify_baseline_geometry)
+                                merge_manifest, triage, verify_baseline_geometry, override_candidate)
 
 
 def sample():
@@ -30,6 +30,31 @@ def sample():
 
 
 class LocalRevisionTests(unittest.TestCase):
+    def test_override_delta_translates_internal_bends_and_preserves_baseline(self):
+        from test_precision_layout import fixture
+        from junction_routes import points_for
+        data, base = fixture()
+        base['edges']['ab']['waypoints'] = [[140, 330], [170, 330], [170, 280], [140, 280]]
+        original = deepcopy(base)
+        edits = {'regions': {'r': {'x': 240, 'y': 180}}}
+        after = override_candidate(data, base, edits, {'r'})
+        before_points = points_for(data['edges']['ab'], base['edges']['ab'], base['nodes'])
+        after_points = points_for(data['edges']['ab'], after['edges']['ab'], after['nodes'])
+        self.assertEqual(after_points, [(x + 200, y + 100) for x, y in before_points])
+        self.assertEqual(base, original)
+
+    def test_failed_override_does_not_mutate_inputs(self):
+        from test_precision_layout import fixture
+        data, base = fixture()
+        original = deepcopy(base)
+        edits = {'edges': {'ab': {'waypoints': [[200, 300]]}}}
+        with self.assertRaisesRegex(ValueError, 'non-orthogonal'):
+            override_candidate(data, base, edits, {'r'})
+        self.assertEqual(base, original)
+        with self.assertRaisesRegex(ValueError, 'out-of-scope'):
+            override_candidate(data, base, {'nodes': {'b': {'x': 230}}}, set())
+        self.assertEqual(base, original)
+
     def test_editor_geometry_changes_cannot_be_silently_discarded(self):
         from test_compiler_pipeline import sample as compiler_sample
         from compile_drawio import compile_diagram

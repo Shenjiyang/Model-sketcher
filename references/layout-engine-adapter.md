@@ -1,5 +1,15 @@
 # Layout engine adapter
 
+## Runtime diagnostics
+
+The global path reports Node/ELK, route conversion and label geometry, macro
+region placement, precision overrides, and hierarchy planning separately on
+stderr, with phase durations and label progress. The 45-second subprocess limit
+applies only to Node/ELK; Python postprocessing may take longer. `ELK_TIMEOUT`
+means a caught Node `TimeoutExpired`, not a terminal yield or a geometric failure.
+A matching previous layout reports reuse and does not start Node. Preserve the
+terminal session ID across yields and wait for its actual exit result.
+
 Use a mature graph layout engine for node placement and ordinary orthogonal
 routing. Keep semantic view projection, Draw.io serialization, and delivery
 auditing as separate stages.

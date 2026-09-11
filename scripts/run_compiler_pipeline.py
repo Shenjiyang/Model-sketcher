@@ -156,7 +156,7 @@ def main() -> int:
         for error in intake_errors:
             print(f'ERROR: {error}')
         return 3
-    print("gate 4: RUNNING (global ELK layout)")
+    print("gate 4: RUNNING (layout generation/reuse, geometry checks and hierarchy planning)", flush=True)
     previous_layout = json.loads(args.previous_layout.read_text(encoding="utf-8")) if args.previous_layout else None
     state = read_state(args.state)
     try:

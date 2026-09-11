@@ -101,6 +101,22 @@ def changed_geometry(before, after, data, regions):
     return changes
 
 
+def override_candidate(data, before, edits, regions):
+    """Apply a delta to the saved geometry, retaining prior edits in that baseline."""
+    from precision_layout import apply_precision
+    if not isinstance(edits, dict) or set(edits) - {'nodes', 'regions', 'edges'}:
+        raise ValueError('local overrides accept nodes, regions and edges only')
+    after = apply_precision(data, before, edits)
+    # Derived hierarchy is rebuilt after scope validation by the existing workflow.
+    for key in ('hierarchy_arrows', 'hierarchy_attachments'):
+        if key in before:
+            after[key] = deepcopy(before[key])
+        else:
+            after.pop(key, None)
+    changed_geometry(before, after, data, regions)
+    return after
+
+
 def verify_baseline_geometry(diagram, layout, data=None):
     """Do not silently replace direct editor moves with an older layout snapshot."""
     from audit_drawio import graph_pages, PageAudit
@@ -310,6 +326,8 @@ def execute(args, run):
     paths.extend(path_from(manifest_path.parent, source['path']) for source in workflow['evidence_sources'])
     if args.candidate_layout:
         paths.append(args.candidate_layout.resolve())
+    if args.overrides:
+        paths.append(args.overrides.resolve())
     backup = run.output / 'backup'
     backup.mkdir()
     for i, path in enumerate(dict.fromkeys(paths)):
@@ -321,7 +339,9 @@ def execute(args, run):
     run.command('baseline-static', [sys.executable, str(SCRIPTS / 'audit_delivery_contract.py'),
                                   str(diagram), '--manifest', str(manifest_path)], blocking=False)
     run.phase('candidate-geometry')
-    if args.repair == 'candidate':
+    if args.repair == 'overrides':
+        after = override_candidate(projected, before, read(args.overrides), regions)
+    elif args.repair == 'candidate':
         if not args.candidate_layout:
             raise ValueError('--repair candidate requires --candidate-layout')
         after = read(args.candidate_layout)
@@ -390,14 +410,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('job', type=Path)
     parser.add_argument('--region', action='append', required=True)
-    parser.add_argument('--repair', choices=('junctions', 'candidate'), default='junctions')
+    parser.add_argument('--repair', choices=('junctions', 'candidate', 'overrides'), default='junctions')
     parser.add_argument('--candidate-layout', type=Path)
+    parser.add_argument('--overrides', type=Path, help='Incremental edits relative to the job layout; never the whole state')
     parser.add_argument('--output-dir', type=Path, required=True, help='New directory; existing directories are never reused')
     parser.add_argument('--render', action='store_true', help='Run official renderer, subject to normal environment approval')
     parser.add_argument('--drawio-bin', type=Path)
     args = parser.parse_args()
     if args.candidate_layout and args.repair != 'candidate':
         parser.error('--candidate-layout requires --repair candidate')
+    if bool(args.overrides) != (args.repair == 'overrides'):
+        parser.error('--repair overrides requires --overrides, and vice versa')
     run = None
     try:
         run = RevisionRun(args.output_dir)

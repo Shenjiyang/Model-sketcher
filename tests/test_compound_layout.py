@@ -1,5 +1,8 @@
 import sys
 import unittest
+import io
+import subprocess
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +13,17 @@ from test_layout_regression_matrix import geometry_findings
 
 
 class CompoundLayoutTests(unittest.TestCase):
+    def test_only_actual_node_timeout_is_reported_as_elk_timeout(self):
+        from test_compiler_pipeline import sample
+        for error, expected in [(subprocess.TimeoutExpired(['node'], 45), 'ELK_TIMEOUT'),
+                                (FileNotFoundError('node missing'), 'FileNotFoundError')]:
+            output = io.StringIO()
+            with redirect_stderr(output), patch('compound_layout.subprocess.run', side_effect=error):
+                with self.assertRaises(type(error)):
+                    plan(sample(), 'test')
+            self.assertIn(expected, output.getvalue())
+            self.assertEqual('ELK_TIMEOUT' in output.getvalue(), isinstance(error, subprocess.TimeoutExpired))
+
     def test_native_is_removed_and_elk_alias_uses_global_backend(self):
         data = {'project': {}, 'regions': {}, 'nodes': {}, 'edges': {}}
         with self.assertRaisesRegex(ValueError, 'native has been removed'):

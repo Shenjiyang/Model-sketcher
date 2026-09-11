@@ -8,6 +8,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from plan_layout_elk import elk_graph, problem_from_region, convert_result
+from layout_progress import phase, progress
 
 
 def build_graph(data, sizes, title_font, hints=None):
@@ -127,10 +128,13 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
             set(previous_layout.get('edges', {})) != {
                 eid for eid, edge in data['edges'].items() if edge.get('kind') != 'expand'}):
             raise ValueError('precision base layout does not match current architecture/view; regenerate ELK base')
-        layout = apply_precision(data, previous_layout, overrides)
+        progress('ELK: REUSED matching previous layout; no Node process started')
+        with phase('precision overrides'):
+            layout = apply_precision(data, previous_layout, overrides)
         if not defer_hierarchy_arrows:
-            layout['hierarchy_arrows'] = plan_hierarchy_arrows(data, layout)
-            apply_hierarchy_arrow_overrides(layout, state)
+            with phase('hierarchy planning'):
+                layout['hierarchy_arrows'] = plan_hierarchy_arrows(data, layout)
+                apply_hierarchy_arrow_overrides(layout, state)
         return layout
     font = data['project'].get('typography', {}).get('ordinary_node_font', 18)
     title_font = data['project'].get('typography', {}).get('region_title_font', 20)
@@ -139,11 +143,20 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
     with tempfile.TemporaryDirectory(prefix='model-sketcher-compound-') as folder:
         src, dst = Path(folder) / 'input.json', Path(folder) / 'output.json'
         src.write_text(json.dumps(graph))
-        subprocess.run(['node', str(Path(__file__).with_name('elk_runner.cjs')), str(src), str(dst)],
-                       check=True, timeout=45, capture_output=True, text=True)
+        with phase('Node/ELK (timeout 45s)'):
+            try:
+                subprocess.run(['node', str(Path(__file__).with_name('elk_runner.cjs')), str(src), str(dst)],
+                               check=True, timeout=45, capture_output=True, text=True)
+            except subprocess.TimeoutExpired:
+                progress('ELK_TIMEOUT: Node process exceeded 45s and was terminated')
+                raise
+            except subprocess.CalledProcessError as error:
+                progress(f'ELK_PROCESS_FAILED: exit={error.returncode}; stderr={error.stderr}')
+                raise
         raw = json.loads(dst.read_text())
     flattened, regions = flatten_result(raw, set(data['nodes']))
-    result = convert_result(problem, flattened)
+    with phase('route conversion and label geometry'):
+        result = convert_result(problem, flattened)
     # ELK may reserve external label shelves inside a compound's side envelope.
     # Tighten visible borders, not nodes/routes; routing is not execution content.
     padding = max(42.0, float(font) * 2)
@@ -180,14 +193,17 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
     }
     if data['project'].get('semantic_view'):
         layout['semantic_view'] = data['project']['semantic_view']
-    auto_place_expansion_regions(data, layout)
+    with phase('macro region placement'):
+        auto_place_expansion_regions(data, layout)
     layout['canvas'] = {
         'width': math.ceil(max(box['x'] + box['w'] for box in layout['regions'].values()) + 40),
         'height': math.ceil(max(box['y'] + box['h'] for box in layout['regions'].values()) + 40),
     }
     if any(overrides.get(group) for group in ('nodes', 'regions', 'edges')):
-        layout = apply_precision(data, layout, overrides)
+        with phase('precision overrides'):
+            layout = apply_precision(data, layout, overrides)
     if not defer_hierarchy_arrows:
-        layout['hierarchy_arrows'] = plan_hierarchy_arrows(data, layout)
-        apply_hierarchy_arrow_overrides(layout, state)
+        with phase('hierarchy planning'):
+            layout['hierarchy_arrows'] = plan_hierarchy_arrows(data, layout)
+            apply_hierarchy_arrow_overrides(layout, state)
     return normalize_junctions(data, layout)
