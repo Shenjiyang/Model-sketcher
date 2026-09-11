@@ -7,17 +7,19 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
+from analysis_scope import POLICY, LEGACY_POLICY, validate_scope
+
 
 OPTIONS = {
     'execution': ['autonomous', 'checkpointed'],
     'coverage': ['whole-model', 'selected-modules'],
-    'depth': ['logical-operators', 'module-summary', 'implementation-detail'],
+    'depth': ['logical-operators', 'module-summary'],
     'organization': ['hierarchy-master', 'end-to-end-dataflow', 'paired'],
     'delivery_views': ['algorithm', 'prefill', 'decode', 'backend'],
     'files': ['drawio', 'png', 'svg'],
 }
 MULTIPLE = {'delivery_views', 'files'}
-ANALYSIS = 'complete-canonical-source-analysis'
+ANALYSIS = POLICY
 CONFIRMATION_INTENTS = {
     'accept-defaults', 'custom-selection', 'start-immediately', 'reuse-confirmed',
 }
@@ -57,8 +59,9 @@ def validate(intake, confirmed=True):
     if not isinstance(intake, dict):
         return ['intake must be an object']
     errors = []
-    if intake.get('schema_version') != 2 or intake.get('analysis_policy') != ANALYSIS:
-        errors.append('intake must retain complete canonical source analysis independently of delivery views')
+    if (intake.get('schema_version') != 2 or not isinstance(intake.get('analysis_policy'), str)
+            or intake['analysis_policy'] not in {ANALYSIS, LEGACY_POLICY}):
+        errors.append('intake must declare a supported complete source analysis policy')
     if not isinstance(intake.get('model_target'), str) or not intake['model_target'].strip():
         errors.append('intake model_target is required')
     choices = intake.get('choices')
@@ -67,6 +70,8 @@ def validate(intake, confirmed=True):
     if set(choices) != set(OPTIONS) | {'modules', 'additional_requirements'}:
         errors.append('intake choices must match the supported option fields exactly')
     for key, allowed in OPTIONS.items():
+        if key == 'depth' and intake.get('analysis_policy') == LEGACY_POLICY:
+            allowed = allowed + ['implementation-detail']
         value = choices.get(key)
         if key in MULTIPLE:
             if (not isinstance(value, list) or not value or
@@ -173,7 +178,13 @@ def delivery_plan(intake, data):
     if choices['coverage'] == 'whole-model' and request.get('coverage') != 'whole-model':
         raise ValueError('whole-model intake cannot be satisfied by selected canonical modules')
     if data.get('source_coverage', {}).get('scope') != 'complete-hierarchy':
-        raise ValueError('intake requires complete canonical source coverage, including unrendered views')
+        raise ValueError('intake requires complete canonical source coverage at the reviewed analysis scope')
+    if intake['analysis_policy'] == ANALYSIS:
+        scope_errors = validate_scope(data, choices['delivery_views'], required=True)
+        if scope_errors:
+            raise ValueError('; '.join(scope_errors))
+    elif 'analysis_scope' in data:
+        raise ValueError('legacy intake requires full analysis; migrate policy explicitly before deferring runtime')
     modules = choices['modules'] if choices['coverage'] == 'selected-modules' else request.get('required_modules', [])
     if not modules or not set(modules).issubset(request.get('required_modules', [])):
         raise ValueError('selected modules lack canonical request mappings')
@@ -212,7 +223,7 @@ def delivery_plan(intake, data):
             expected = {'logical-operators': 'operator-detail', 'implementation-detail': 'implementation-detail'}.get(choices['depth'])
             if not visible or (expected and not any(r.get('granularity') == expected for r in visible)):
                 raise ValueError(f'delivery module {module} lacks visible {expected or "summary"} in algorithm views')
-    return {'intake_sha256': payload_digest(intake), 'analysis_policy': ANALYSIS,
+    return {'intake_sha256': payload_digest(intake), 'analysis_policy': intake['analysis_policy'],
             'views': selected, 'required_modules': modules, 'depth': choices['depth'],
             'organization': choices['organization'], 'files': choices['files']}
 
@@ -274,7 +285,11 @@ def main():
             for key, options in OPTIONS.items():
                 print(f'| {key} | {value["choices"][key]} | {", ".join(options)} |')
             print('| additional_requirements | | Free text |')
-            print('Analysis always covers the complete canonical source scope. Choices select delivery only.')
+            if value.get('analysis_policy') == LEGACY_POLICY:
+                print('Legacy policy: complete analysis of every canonical semantic layer remains required.')
+            else:
+                print('Complete model logical operators and algorithm-relevant state are always required. '
+                      'Runtime details are inventoried and expanded for selected Prefill/Decode/backend views.')
         elif args.action == 'confirm':
             if not args.source_ref or not args.user_quote:
                 parser.error('--source-ref and --user-quote must cite an actual user confirmation')

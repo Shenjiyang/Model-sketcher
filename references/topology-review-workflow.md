@@ -123,10 +123,13 @@ The audit rejects an invalid architecture, non-canonical or hand-edited ASCII, s
 ## Canonical completeness and delivery selection
 
 Read the originating user request and `project-intake.json` separately from
-Builder's scope interpretation. Intake selects final diagrams; never filter the
-source-first inventory, canonical ASCII or reviewed regions by checked delivery
-views. Review every applicable algorithm, inference and backend section within
-the pinned source scope, even when only the algorithm diagram is requested.
+Builder's scope interpretation. Read [analysis-scope-contract.md](analysis-scope-contract.md).
+Review the complete model algorithm and computational state semantics, every
+materialized region, and all runtime extension boundaries. Under the new policy,
+unrequested implementation internals may remain inventoried and unexpanded.
+Fill `analysis_scope_review` independently; never accept Builder's category label
+as proof that an omitted condition or state dependency is implementation-only.
+Legacy policy continues requiring full canonical runtime analysis until migrated.
 For whole-model logical detail, independently enumerate distinct non-atomic model
 families and reconcile each with its logical expansion. A complete MLA/MoE pair
 cannot certify other unexamined families. Existing user-request-coverage,

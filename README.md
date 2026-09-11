@@ -11,7 +11,7 @@ The skill is designed for source-level model analysis rather than generic presen
 - Logical operator diagrams that preserve tensor operations even when kernels are fused
 - Generated ASCII topology contracts for review before geometry is created
 - An independent, digest-bound topology review gate
-- Native and ELK-based deterministic layout
+- Global ELK deterministic layout
 - Compound ELK routing for ordinary cross-region edges, with explicit routing coverage metadata
 - Editable Draw.io compilation
 - Static delivery audits and rendered SVG checks
@@ -75,8 +75,12 @@ Start by showing the prefilled delivery options from
 Record the user's actual confirmation using the intake tool before geometry.
 Defaults deliver a whole-model algorithm hierarchy with all distinct module
 families expanded to logical operators. Prefill, Decode and backend Runtime are
-optional additional diagrams; the canonical IR/ASCII and source review still
-cover all applicable layers in the pinned source scope. See
+optional additional diagrams. Canonical IR/ASCII always covers complete model
+logic and computational state semantics; unrequested physical runtime details
+remain in a source-backed, independently reviewed extension inventory. Selecting
+a runtime view requires expanding its matching entries before delivery. Existing
+materialized graphs still receive full review. See
+[`references/analysis-scope-contract.md`](references/analysis-scope-contract.md) and
 [`references/project-intake.md`](references/project-intake.md) for selection,
 confirmation, delivery planning and file-set checks.
 

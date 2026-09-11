@@ -598,6 +598,8 @@ def validate_review(
     validate_reconstruction_review(data, review, errors)
     from semantic_consistency import validate_expectations
     errors.extend(validate_expectations(data, review, architecture))
+    from analysis_scope import validate_scope_review
+    errors.extend(validate_scope_review(data, review))
     if review.get("verdict") != "pass":
         errors.append("topology review verdict must be pass")
     return sorted(set(errors))

@@ -11,18 +11,21 @@ requirements in free text. Do not make them invent option names or module facts.
 | Model target | Prefill from the request | Resolve materially different checkpoints |
 | Execution | Autonomous completion | Autonomous / checkpointed |
 | Delivery coverage | Whole model | Whole model / named modules |
-| Algorithm depth | Complete logical operators | Logical operators / module summary / implementation detail |
+| Algorithm presentation | Complete logical operators | Logical operators / module summary |
 | Organization | Hierarchy overview with detail expansions | Hierarchy / continuous dataflow / paired |
 | Delivery views (multiple) | Algorithm | Algorithm / Prefill / Decode / backend Runtime |
 | Output files (multiple) | Draw.io, PNG, SVG | Draw.io / PNG / SVG |
 | Extra requirements | Empty | Free text |
 
-These choices select DELIVERABLES. Within the pinned model/source scope, canonical
-analysis always includes the complete model algorithm, logical operators, relevant
-prefill/decode paths, state lifecycles and backend variants. Keep them in separate
-semantic layers and ASCII sections. Unselected delivery views still require
-canonical source coverage and independent review. Do not invent unavailable
-implementations; record missing evidence and resolve completeness blockers.
+Follow [analysis-scope-contract.md](analysis-scope-contract.md). Canonical analysis
+always includes the complete model algorithm, logical operators and state semantics
+that affect computation. Inventory runtime extension boundaries; fully expand the
+selected Prefill/Decode/backend views. Unselected physical implementation details
+may remain independently reviewed inventory entries, without runtime graph regions.
+Already materialized regions must still pass all audits. Do not invent unavailable
+implementations. Runtime selection determines execution detail; it is not a second
+algorithm-depth setting. Existing legacy intake retains its original full scope
+until an explicitly authorized migration.
 
 Whole model plus logical operators means every distinct non-atomic model module
 family has a complete operator expansion, with repeated layers represented by
@@ -68,8 +71,9 @@ instructions; ask only if those instructions leave a material choice unresolved.
 
 Canonical `request_contract`, `delivery_scope`, source inventory and view
 dispositions remain complete and reviewed. Their module mappings describe the
-available source-grounded expansions; never rewrite them to remove an unchecked
-delivery view. The external intake selects among those views and is not part of
+available source-grounded expansions; never rewrite them to hide a failed
+delivery view. `analysis_scope` binds reviewed extension boundaries in the IR.
+The external intake selects among those views and is not part of
 the canonical semantic digest. Adding an already reviewed delivery view reuses
 the review. Adding missing operators, paths or a new canonical projection requires
 updating the canonical ASCII and re-reviewing the changed semantics.

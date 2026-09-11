@@ -28,7 +28,10 @@ Confirmed delivery options live in sibling `project-intake.json`; follow
 entrypoints reject a missing or incompatible intake. The canonical request and
 module mappings below retain the complete analysis scope; user-selected output
 views and file formats live outside the IR so they do not invalidate its semantic
-review. Never prune canonical paths to match the selected diagrams.
+review. Follow [analysis-scope-contract.md](analysis-scope-contract.md): the new
+policy permits reviewed runtime extension boundaries without expanding unrequested
+implementation internals. Existing graph paths remain fully audited; shrinking
+their scope is a semantic revision, never a view-filtering shortcut.
 
 Before the first review, preserve `project.request_contract`: `user_quote` contains
 the original request verbatim, `source_ref` identifies its message/task record,
@@ -38,6 +41,13 @@ the original request verbatim, `source_ref` identifies its message/task record,
 whose internals must meet that depth. Coverage and depth are independent: a focused
 MLA view can require logical operators; an entire model can be an explicitly
 requested overview. Level numbers describe presentation hierarchy, not these axes.
+
+For new scoped-policy projects, `request_contract.depth` records the canonical
+`logical-operators` analysis floor. Preserve the user's verbatim request and record
+summary-only presentation in intake `choices.depth`; its delivery projection may
+be shallow while canonical module mappings still include operator-detail regions.
+Backend implementation depth comes from the requested runtime view, not this field.
+Legacy-policy request contracts retain their existing depth interpretation.
 
 In `project.delivery_scope`, `module_regions` maps every requested module to a
 non-empty list of region IDs. `required_regions` maps those regions and any

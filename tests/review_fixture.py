@@ -290,7 +290,10 @@ def reviewed_project(with_views=False) -> tuple[tempfile.TemporaryDirectory, Pat
                 entity.update(semantic_layer="model-algorithm", views=["model-algorithm"])
     architecture = root / "architecture.json"
     from project_intake import propose, confirm
-    intake = confirm(propose('review-fixture'),
+    proposed = propose('review-fixture')
+    # Preserve legacy gate fixtures; scoped-policy coverage lives in test_analysis_scope.
+    proposed['analysis_policy'] = 'complete-canonical-source-analysis'
+    intake = confirm(proposed,
                      {'coverage': 'selected-modules', 'modules': ['projection']},
                      'test-user-message', 'Use the projection logical operator preset')
     (root / 'project-intake.json').write_text(json.dumps(intake))

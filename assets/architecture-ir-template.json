@@ -25,6 +25,12 @@
       "hierarchy_label_font": 20
     }
   },
+  "analysis_scope": {
+    "policy": "complete-algorithm-with-runtime-inventory",
+    "algorithm_coverage": "complete-model-logical-operators",
+    "inventory_basis": "Replace with the pinned source paths inspected for runtime extension boundaries",
+    "runtime_inventory": []
+  },
   "evidence": [
     {"id": "config", "role": "checkpoint-config", "path": "references/model/config.json", "revision": "unknown"},
     {"id": "forward", "role": "canonical-model", "path": "references/model/modeling.py", "revision": "unknown"}

@@ -43,6 +43,14 @@ Use `status: not-applicable` only after a source-branch review proves that the r
 
 ## Persistent state is a side-lane object
 
+Apply [analysis-scope-contract.md](analysis-scope-contract.md) before choosing the
+state abstraction. Algorithm graphs require logical storage shape, visibility,
+producers, consumers and validity/update guards. Their `layout` and addressing
+facts can describe logical token order or layer ranges; do not require physical
+slots, Python attribute aliases or backend paging solely to fill these fields.
+Physical details belong in requested runtime extensions. Every materialized state
+object still requires the lifecycle contract below.
+
 Use `kind: cache` or `kind: state` only for persistent storage. Cache read, cache write, cache update, and recurrent update are `kind: operator` nodes with the corresponding `operator_contract.op_type`. Persistent state uses the canonical slanted storage glyph and never appears in an `operator_sequence`.
 
 Every persistent object requires one `state_lifecycle_contracts.<node-id>` entry with:

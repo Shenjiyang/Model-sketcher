@@ -48,7 +48,7 @@ def build_pending_review(architecture: Path, topology: Path, trigger: str) -> di
         if isinstance(path, dict) and isinstance(path.get("id"), str)
     )
     region_ids = sorted(data.get("regions", {}))
-    return {
+    result = {
         "schema_version": 3,
         "review_scope": "semantic-topology",
         "trigger": trigger,
@@ -131,6 +131,13 @@ def build_pending_review(architecture: Path, topology: Path, trigger: str) -> di
         },
         "verdict": "pending",
     }
+    if "analysis_scope" in data:
+        result["analysis_scope_review"] = {
+            "status": "pending", "inventory_complete": False,
+            "finding": "Replace with source-first algorithm/runtime boundary findings.",
+            "items": {},
+        }
+    return result
 
 
 def main() -> int:

@@ -51,7 +51,7 @@ Set `project.require_view_projection_contracts: true`, choose `project.semantic_
 }
 ```
 
-An algorithm master is mandatory in the canonical record. Define an inference-runtime view when the canonical IR contains inference-execution entities, and a backend-runtime view when it contains backend-implementation entities. These definitions and their complete ASCII/source coverage are required even when the user does not select those diagrams for delivery. Record inference `runtime_phases` as `["prefill"]`, `["decode"]` or both. `project-intake.json` selects the final diagrams; its default is the algorithm diagram with all distinct module families expanded to logical operators. Add `operator-flops` only when FLOPs or operator accounting is requested; state the counting convention and retain zero-FLOP shape transforms needed for domain closure.
+An algorithm master is mandatory in the canonical record. Follow [analysis-scope-contract.md](analysis-scope-contract.md): deferred runtime inventory entries do not require graph regions or view definitions. Once inference-execution or backend-implementation graph entities are materialized, their corresponding views and full ASCII/source coverage remain mandatory even if not rendered. Selecting Prefill/Decode/backend requires expanding the matching inventory first. Record inference `runtime_phases` as `["prefill"]`, `["decode"]` or both. The default delivery is the algorithm diagram with all distinct module families expanded to logical operators. Add `operator-flops` only when requested; retain zero-FLOP shape transforms needed for domain closure.
 
 ## Projection invariants
 

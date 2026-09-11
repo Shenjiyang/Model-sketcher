@@ -8,6 +8,8 @@ import json
 import re
 from pathlib import Path
 
+from analysis_scope import validate_scope
+
 from semantic_palette import (
     SEMANTIC_PALETTE,
     VISUAL_MODIFIERS,
@@ -31,6 +33,7 @@ SOURCE_OPERATION_STATUSES = {
     "source-confirmed-fusion",
     "fused-execution-group",
     "expanded-in-region",
+    "deferred-runtime",
     "out-of-scope",
     "unresolved",
 }
@@ -1929,6 +1932,9 @@ def validate(data: dict, base: Path, require_files: bool = False) -> list[str]:
                         errors.append(f"{op_prefix}.reason is required for {status}")
                     if scope == "complete-hierarchy":
                         errors.append(f"{op_prefix} cannot be {status} in complete-hierarchy coverage")
+                elif status == "deferred-runtime" and "analysis_scope" not in data:
+                    errors.append(f"{op_prefix}: deferred-runtime requires analysis_scope")
+        errors.extend(validate_scope(data))
         if scope == "complete-hierarchy" and unknown_material_edges:
             errors.append(
                 "complete-hierarchy source coverage cannot leave material tensor shapes unknown: "

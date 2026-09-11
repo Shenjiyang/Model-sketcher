@@ -45,6 +45,15 @@ def render(data: dict) -> str:
     for item in sorted(data.get("evidence", []), key=lambda value: value["id"]):
         lines.append(f"[{item['id']}] {item['role']} @ {item['revision']} :: {item['path']}")
 
+    if "analysis_scope" in data:
+        scope = data["analysis_scope"]
+        lines.extend(["", "ANALYSIS SCOPE AND RUNTIME INVENTORY", "-----------------------------------",
+                      "policy: " + scope["policy"],
+                      "algorithm_coverage: " + scope["algorithm_coverage"],
+                      "inventory_basis: " + scope["inventory_basis"]])
+        for item in sorted(scope["runtime_inventory"], key=lambda value: value["id"]):
+            lines.append("runtime-extension:" + item["id"] + " " + json.dumps(item, sort_keys=True))
+
     projections = data.get("view_projection_contract")
     lines.extend(["", "VIEW PROJECTIONS", "----------------"])
     if not isinstance(projections, dict):
@@ -197,6 +206,8 @@ def render(data: dict) -> str:
                     target = f" -> node:{operation['node']}"
                 elif "region" in operation:
                     target = f" -> region:{operation['region']}"
+                elif "runtime_extension" in operation:
+                    target = f" -> runtime-extension:{operation['runtime_extension']}"
                 reason = f" :: {operation['reason']}" if operation.get("reason") else ""
                 lines.append(
                     f"  [{operation['id']}] {operation['label']} :: {operation['status']}{target}"

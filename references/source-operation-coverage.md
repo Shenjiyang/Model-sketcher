@@ -16,7 +16,7 @@ Inventory material executable operations in source order, including:
 
 Do not inventory ordinary Python bookkeeping, logging, assertions, container construction, or return-object packaging unless it changes the represented execution semantics. The inventory is a reviewed extraction from source; the validator can prove that inventoried items are mapped, but it cannot discover an operation that was omitted from the inventory. Review the source and inventory side by side before accepting this gate.
 
-Source completeness does not require every inventoried operation to appear on the same reader-facing page. After mapping every operation into the canonical IR, use [view-projection-contract.md](view-projection-contract.md) to route model mathematics, inference execution, and backend implementation into appropriate projections. A view assignment is presentation metadata, not an `out-of-scope` status.
+Read [analysis-scope-contract.md](analysis-scope-contract.md): model logic and computational state semantics always require graph mappings. Unrequested physical runtime helpers may be inventoried at their boundary as reviewed `deferred-runtime` entries; their implementation internals need not be expanded. Map all other operations into the canonical IR, then use [view-projection-contract.md](view-projection-contract.md) for reader projections. A view assignment cannot excuse missing mathematical operators.
 
 ## IR contract
 
@@ -66,6 +66,7 @@ IDs are stable and unique. Every path names its executable evidence, exact sourc
 - `source-confirmed-fusion`: legacy/implementation-detail mapping to one visible fused-kernel node with a source-backed `reason`; it may not collapse logical members in strict `operator-detail`.
 - `fused-execution-group`: maps one fused source call to an `execution_fusions` record whose member logical operators remain visible.
 - `expanded-in-region`: maps a child-module call to a concrete `operator-detail` or `implementation-detail` region.
+- `deferred-runtime`: maps an implementation-only boundary to `runtime_extension`, an independently reviewed deferred entry in `analysis_scope.runtime_inventory`. Allowed only under the new scoped policy, never for algorithm semantics or a requested runtime category.
 - `out-of-scope`: allowed only for a bounded `selected-paths` contract and includes a reason.
 - `unresolved`: allowed only as explicit debt in `selected-paths` work and includes a reason.
 
