@@ -70,7 +70,18 @@ Validate an architecture IR before layout:
 python3 scripts/validate_architecture_ir.py path/to/architecture.json
 ```
 
-Run the gated compiler pipeline after the independent review artifact exists:
+Start by showing the prefilled delivery options from
+`scripts/project_intake.py propose project-intake.json --model MODEL_ID`.
+Record the user's actual confirmation using the intake tool before geometry.
+Defaults deliver a whole-model algorithm hierarchy with all distinct module
+families expanded to logical operators. Prefill, Decode and backend Runtime are
+optional additional diagrams; the canonical IR/ASCII and source review still
+cover all applicable layers in the pinned source scope. See
+[`references/project-intake.md`](references/project-intake.md) for selection,
+confirmation, delivery planning and file-set checks.
+
+Run the gated compiler pipeline after the confirmed sibling `project-intake.json`
+and independent review artifact exist:
 
 ```bash
 python3 scripts/run_compiler_pipeline.py path/to/architecture.json \

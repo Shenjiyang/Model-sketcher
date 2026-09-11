@@ -23,6 +23,13 @@ The `.drawio` file is compiled output. Do not hand-edit compiled cells and then 
 
 ## Gates
 
+Confirmed delivery options live in sibling `project-intake.json`; follow
+[project-intake.md](project-intake.md). Normal layout/compile and strict delivery
+entrypoints reject a missing or incompatible intake. The canonical request and
+module mappings below retain the complete analysis scope; user-selected output
+views and file formats live outside the IR so they do not invalidate its semantic
+review. Never prune canonical paths to match the selected diagrams.
+
 Before the first review, preserve `project.request_contract`: `user_quote` contains
 the original request verbatim, `source_ref` identifies its message/task record,
 `views` lists requested semantic view IDs, `coverage` is `whole-model` or
@@ -45,7 +52,7 @@ all requested modules and their mappings, and the independent source inventory.
 For whole-model coverage it must challenge missing module families, not merely
 confirm the listed subset. An external request record must be read when referenced;
 a source_ref string or hash alone does not authenticate user authorization.
-Never narrow depth or coverage without an actual user change; preserve the prior
+Never narrow canonical analysis depth or coverage without an actual user change; preserve the prior
 request in project history when changing it. Any request change invalidates review.
 Migrate old overview/focused/detailed declarations from the original task, never
 infer user consent from the previous diagram. The initial template intentionally

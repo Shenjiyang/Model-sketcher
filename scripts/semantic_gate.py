@@ -61,8 +61,12 @@ def validate_delivery_scope(data):
 
 def validate_semantic_gate(architecture, topology=None, review=None, state=None):
     from audit_topology_review import validate_review
+    from project_intake import validate_project_intake
 
     architecture = Path(architecture)
+    intake_errors = validate_project_intake(architecture)
+    if intake_errors:
+        return intake_errors
     topology = Path(topology) if topology else architecture.with_name("topology.contract.txt")
     try:
         if review is None and state is not None and Path(state).is_file():
@@ -88,6 +92,17 @@ def cli_gate(args):
     errors = validate_semantic_gate(
         args.architecture, args.topology_contract, args.topology_review, args.state
     )
+    if not errors:
+        from project_intake import validate_project_intake
+        try:
+            data = json.loads(args.architecture.read_text())
+            selected = data.get('project', {}).get('semantic_view')
+            layout_path = getattr(args, 'layout', None)
+            if layout_path is not None and layout_path.is_file():
+                selected = json.loads(layout_path.read_text()).get('semantic_view', selected)
+            errors.extend(validate_project_intake(args.architecture, selected))
+        except (OSError, ValueError, AttributeError) as error:
+            errors.append(f'cannot validate selected delivery view: {error}')
     if errors:
         print("semantic gate: REFUSED; repair scope/ASCII/review before geometry")
         for error in errors:

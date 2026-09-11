@@ -71,6 +71,8 @@ def validate_manifest(diagram: Path, manifest_path: Path) -> tuple[dict, list[st
         for path in (architecture_path, topology_path, topology_review_path)
     ):
         errors.extend(validate_review(architecture_path, topology_path, topology_review_path))
+        from project_intake import validate_project_intake
+        errors.extend(validate_project_intake(architecture_path, defaults.get('semantic_view')))
 
     projected = None
     if architecture_path is not None and architecture_path.is_file() and defaults.get("semantic_view"):

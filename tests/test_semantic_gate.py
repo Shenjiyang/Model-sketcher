@@ -43,6 +43,22 @@ class SemanticGateTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(output.is_file())
 
+    def test_unconfirmed_intake_blocks_standalone_writes(self):
+        intake = self.root / 'project-intake.json'
+        value = json.loads(intake.read_text())
+        value['status'] = 'proposed'
+        intake.write_text(json.dumps(value))
+        layout, output = self.root / 'layout.json', self.root / 'model.drawio'
+        layout.write_text('preserve-layout')
+        output.write_text('preserve-diagram')
+        for name, args in [('plan_layout.py', [self.arch, layout]),
+                           ('compile_drawio.py', [self.arch, layout, output])]:
+            result = self.command(name, *args)
+            self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+            self.assertIn('intake is not confirmed', result.stdout)
+        self.assertEqual(layout.read_text(), 'preserve-layout')
+        self.assertEqual(output.read_text(), 'preserve-diagram')
+
     def test_engine_choice_hidden_but_legacy_commands_generate_same_layout(self):
         layout, output = self.root / 'layout.json', self.root / 'model.drawio'
         for name, args in [

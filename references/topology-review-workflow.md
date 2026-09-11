@@ -114,3 +114,16 @@ python scripts/audit_topology_review.py architecture.json topology.contract.txt 
 ```
 
 The audit rejects an invalid architecture, non-canonical or hand-edited ASCII, stale semantic digest, regenerated ASCII, changed source file, incomplete or duplicate path/operation/check/region coverage, unpinned material callee, self-review, missing attestation, placeholder or blocking finding, non-pass verdict, missing receipt, or post-finalization edit. `run_compiler_pipeline.py --topology-review topology-review.json` enforces the gate for every compiler-path project, independent of optional project flags. A semantic change invalidates the old artifact by design; create a new pending artifact and rerun the Reviewer. Review-only prose and validated visual/layout fields do not change the semantic digest or generated ASCII, so they do not trigger another Reviewer.
+## Canonical completeness and delivery selection
+
+Read the originating user request and `project-intake.json` separately from
+Builder's scope interpretation. Intake selects final diagrams; never filter the
+source-first inventory, canonical ASCII or reviewed regions by checked delivery
+views. Review every applicable algorithm, inference and backend section within
+the pinned source scope, even when only the algorithm diagram is requested.
+For whole-model logical detail, independently enumerate distinct non-atomic model
+families and reconcile each with its logical expansion. A complete MLA/MoE pair
+cannot certify other unexamined families. Existing user-request-coverage,
+source-operation-closure and view-projection-boundary checks must address this.
+Adding a previously reviewed delivery view changes the external intake, not the
+canonical review. New semantic content or projection definitions need re-review.

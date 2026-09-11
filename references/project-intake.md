@@ -1,63 +1,99 @@
 # Project intake and autonomous execution
 
-For a new project with no confirmed configuration, present this short table once.
-Prefill information already supplied by the user. Defaults are proposals until
-confirmed, except when the user explicitly asks to start immediately or reuse a
-known preset. In that case announce the resolved configuration and proceed.
+For a new project, present one prefilled selection form before geometry. Use the
+host's user-input controls when available; otherwise render the option table below.
+Translate labels into the user's language. Do not replace the form with a prose
+recommendation. Users can accept defaults, select alternatives, and supply extra
+requirements in free text. Do not make them invent option names or module facts.
 
-| Setting | Proposed default | Alternatives |
+| Setting | Default | Available options |
 | --- | --- | --- |
-| Model target | Requested model; verify exact checkpoint | Clarify materially different variants |
-| Execution | Autonomous completion | Checkpointed collaboration |
-| Semantic views | Model algorithm | Inference execution, backend implementation, or combination |
-| Coverage | Whole model | Named modules |
-| Depth | Logical operators | Module summary or implementation detail |
-| Organization | Hierarchy master | Continuous dataflow or paired output |
-| Files | Editable Draw.io, PNG, SVG | User-selected formats |
+| Model target | Prefill from the request | Resolve materially different checkpoints |
+| Execution | Autonomous completion | Autonomous / checkpointed |
+| Delivery coverage | Whole model | Whole model / named modules |
+| Algorithm depth | Complete logical operators | Logical operators / module summary / implementation detail |
+| Organization | Hierarchy overview with detail expansions | Hierarchy / continuous dataflow / paired |
+| Delivery views (multiple) | Algorithm | Algorithm / Prefill / Decode / backend Runtime |
+| Output files (multiple) | Draw.io, PNG, SVG | Draw.io / PNG / SVG |
+| Extra requirements | Empty | Free text |
 
-The user may reply "use defaults" or change only selected rows. Batch remaining
-material ambiguities into one clarification. Research facts such as head counts,
-source entrypoints, required module families, and tensor shapes yourself. Do not
-ask the user to supply facts obtainable from the selected evidence. If several
-checkpoints could match the request and materially differ, resolve that ambiguity
-before committing semantic scope.
+These choices select DELIVERABLES. Within the pinned model/source scope, canonical
+analysis always includes the complete model algorithm, logical operators, relevant
+prefill/decode paths, state lifecycles and backend variants. Keep them in separate
+semantic layers and ASCII sections. Unselected delivery views still require
+canonical source coverage and independent review. Do not invent unavailable
+implementations; record missing evidence and resolve completeness blockers.
 
-Reviewer, source verification, semantic validation, and final acceptance are
-required quality steps, not optional table rows. Do not ask whether to enable the
-first required independent Reviewer when applicable collaboration rules permit
-skill-requested delegation. An actual higher-priority prohibition is a blocker;
-describe the precise restriction instead of calling Reviewer optional.
+Whole model plus logical operators means every distinct non-atomic model module
+family has a complete operator expansion, with repeated layers represented by
+templates and counts. MLA/MoE are examples, never an implicit shortlist. Atomic
+operators need no informationless child diagram. Reviewer must discover families
+from source independently of Builder's list; machine checks cannot infer an
+unrecorded family from source code alone.
 
-Different views may use different depths. Preserve such a request explicitly;
-do not silently force it into the current single-depth request_contract schema.
-Use separate scoped project records for different depths while keeping their
-common source snapshots consistent. Explain this choice in the configuration.
+Reviewer, source verification, validation and layout engine are internal required
+steps, not user-selectable switches. Ask about remaining material ambiguities
+together. An explicit instruction to start immediately or reuse confirmed choices
+counts as confirmation: record that actual instruction and proceed without another
+question. Silence and Builder's own suggestion are not confirmation.
 
-## Persistent choices
+## Record choices and derive delivery
 
-Record semantic choices and the original task in `project.request_contract` and
-their realization in `project.delivery_scope` as defined in compiler-workflow.md.
-Save interaction choices in `project-state.json.execution_contract`:
+Use the shared tool so UI/table defaults and machine validation agree:
 
-```json
-{
-  "mode": "autonomous",
-  "configuration_status": "confirmed",
-  "confirmation_source": "User message confirming the proposed configuration",
-  "output_formats": ["drawio", "png", "svg"],
-  "checkpoints": [],
-  "replan_after_non_improving_attempts": 3
-}
+```bash
+python scripts/project_intake.py propose project-intake.json --model MODEL_ID
+python scripts/project_intake.py show project-intake.json
+python scripts/project_intake.py confirm project-intake.json --selection user-choices.json --source-ref USER_MESSAGE_ID --user-quote USER_CONFIRMATION
+python scripts/project_intake.py plan project-intake.json --architecture architecture.json
 ```
 
-`mode` is `autonomous` or `checkpointed`; `configuration_status` is `proposed` or
-`confirmed`. An explicit "start now" or "reuse the previous configuration" is a
-valid confirmation source; silence is not. For checkpointed work, name the actual
-user-review milestones in `checkpoints`. Do not add an approval after every tool.
-For resume/local edits, reuse saved choices and ask only about unresolved material
-conflicts. A missing legacy execution record is not a reason to re-ask an explicit
-autonomous instruction: record it and continue. Execution choices live outside
-semantic IR so switching interaction mode alone does not invalidate source review.
+The selection file contains only changed choice fields. Omit it to accept the
+displayed defaults. The agent records the user's real response, never manufactures
+one. The host controls whether a popup is available; this skill does not install a
+GUI or claim to authenticate a click. The confirmation digest detects subsequent
+edits, not identity forgery by another process with the same file permissions.
+
+Keep `project-intake.json` beside canonical `architecture.json`. Layout/compile
+entrypoints and strict delivery/render gates reject absent, proposed, changed or
+incompatible intake. For existing projects, reconstruct it from actual prior user
+instructions; ask only if those instructions leave a material choice unresolved.
+
+Canonical `request_contract`, `delivery_scope`, source inventory and view
+dispositions remain complete and reviewed. Their module mappings describe the
+available source-grounded expansions; never rewrite them to remove an unchecked
+delivery view. The external intake selects among those views and is not part of
+the canonical semantic digest. Adding an already reviewed delivery view reuses
+the review. Adding missing operators, paths or a new canonical projection requires
+updating the canonical ASCII and re-reviewing the changed semantics.
+
+Inference view definitions declare `runtime_phases: ["prefill"]`, `["decode"]`
+or both, based on source. The plan resolves user categories to declared view IDs.
+An overview-only choice requires an actual canonical overview projection; it may
+not export the detailed view and call it a summary. A combined prefill/decode view
+is selected only when both phases are requested. Define phase-specific views when
+the user requests just one phase.
+Missing categories, empty views, missing module expansions and narrower canonical
+coverage fail explicitly. Algorithm selections resolve algorithm-master/operator
+views; backend selections resolve backend-runtime views. Runtime inference depth
+comes from its complete reviewed paths, not the algorithm-depth dropdown.
+
+Run the existing pipeline for every view in the plan, selecting it using
+`--semantic-view VIEW_ID`. Run normal strict and official visual acceptance per
+view, then verify all chosen views and formats were produced:
+
+```bash
+python scripts/project_intake.py check-files project-intake.json --architecture architecture.json --artifacts delivery-artifacts.json
+```
+
+The artifact JSON maps view IDs to format/path objects; paths are relative to
+that JSON. File coverage is not a semantic, geometry or visual PASS. Never claim
+the entire delivery complete after producing only one selected view.
+
+Interaction/recovery state stays in `project-state.json.execution_contract`:
+mirror the confirmed mode, confirmation source and output formats there, with
+explicit checkpoints only for checkpointed execution. The authoritative choices
+are the intake file. A pipeline command finishing does not end the active task.
 
 ## Continue after internal failures
 

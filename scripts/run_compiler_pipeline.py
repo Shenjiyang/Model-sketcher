@@ -149,6 +149,13 @@ def main() -> int:
     if args.semantic_view is not None:
         data["project"]["semantic_view"] = args.semantic_view
     layout_started = time.monotonic()
+    from project_intake import validate_project_intake
+    intake_errors = validate_project_intake(args.architecture, data['project'].get('semantic_view'))
+    if intake_errors:
+        print('intake gate: FAIL')
+        for error in intake_errors:
+            print(f'ERROR: {error}')
+        return 3
     print("gate 4: RUNNING (global ELK layout)")
     previous_layout = json.loads(args.previous_layout.read_text(encoding="utf-8")) if args.previous_layout else None
     state = read_state(args.state)

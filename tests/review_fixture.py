@@ -271,6 +271,11 @@ def reviewed_project(with_views=False) -> tuple[tempfile.TemporaryDirectory, Pat
             for entity in data[collection].values():
                 entity.update(semantic_layer="model-algorithm", views=["model-algorithm"])
     architecture = root / "architecture.json"
+    from project_intake import propose, confirm
+    intake = confirm(propose('review-fixture'),
+                     {'coverage': 'selected-modules', 'modules': ['projection']},
+                     'test-user-message', 'Use the projection logical operator preset')
+    (root / 'project-intake.json').write_text(json.dumps(intake))
     architecture.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     topology = root / "topology.contract.txt"
     topology.write_text(render(data), encoding="utf-8")
