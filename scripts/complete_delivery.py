@@ -204,6 +204,11 @@ def certify(args: argparse.Namespace) -> tuple[dict, list[str]]:
             "rendered_svg": args.rendered_svg, "visual_review": args.visual_review,
             "project_state": args.state, **resolved,
         }
+        artifacts["project_intake"] = architecture.with_name("project-intake.json")
+        visual = json.loads(args.visual_review.read_text(encoding="utf-8"))
+        artifacts["overview"] = resolve(args.visual_review.parent, visual["overview"]["path"], "overview", errors)
+        for index, crop in enumerate(visual["detail_crops"]):
+            artifacts[f"detail_crop_{index}"] = resolve(args.visual_review.parent, crop["path"], "detail crop", errors)
         receipt = {
             "schema_version": 1,
             "status": "deliverable",
@@ -236,7 +241,9 @@ def verify_receipt(path: Path, rerun: bool = True) -> list[str]:
             errors.append(f"receipt artifact {name} changed after certification")
     if receipt.get("gate") != "model-sketcher-completion-v1":
         errors.append("delivery receipt has an unknown completion gate")
-    required = {"diagram", "manifest", "layout", "rendered_svg", "visual_review", "project_state"}
+    required = {"diagram", "manifest", "layout", "rendered_svg", "visual_review", "project_state",
+                "architecture", "topology_contract", "topology_review", "evidence", "shape_ledger",
+                "project_intake", "overview"}
     if not required.issubset(resolved_artifacts):
         errors.append(f"delivery receipt is missing required artifacts: {sorted(required - set(resolved_artifacts))}")
     if rerun and not errors:
@@ -245,8 +252,10 @@ def verify_receipt(path: Path, rerun: bool = True) -> list[str]:
             layout=resolved_artifacts["layout"], rendered_svg=resolved_artifacts["rendered_svg"],
             visual_review=resolved_artifacts["visual_review"], state=resolved_artifacts["project_state"],
         )
-        _, certification_errors = certify(args)
+        current, certification_errors = certify(args)
         errors.extend(certification_errors)
+        if not certification_errors and current.get("artifacts") != artifacts:
+            errors.append("delivery receipt bindings differ from the current certified project")
     return errors
 
 

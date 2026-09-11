@@ -96,6 +96,9 @@ python scripts/project_intake.py check-files project-intake.json --architecture 
 The artifact JSON maps view IDs to format/path objects; paths are relative to
 that JSON. File coverage is not a semantic, geometry or visual PASS. Never claim
 the entire delivery complete after producing only one selected view.
+Finish with `complete_project.py` as specified in
+[completion-gate.md](completion-gate.md). It combines this exact selected-file
+coverage with freshly verified per-view receipts and rejects substituted exports.
 
 Interaction/recovery state stays in `project-state.json.execution_contract`:
 mirror the confirmed mode, confirmation source and output formats there, with

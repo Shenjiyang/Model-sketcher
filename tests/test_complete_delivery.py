@@ -65,7 +65,8 @@ class CompletionGateTests(unittest.TestCase):
                 "gate": "model-sketcher-completion-v1",
                 "artifacts": {name: {"path": str(artifact), "sha256": digest(artifact)}
                               for name in ("diagram", "manifest", "layout", "rendered_svg",
-                                           "visual_review", "project_state")}
+                                           "visual_review", "project_state", "architecture", "topology_contract",
+                                           "topology_review", "evidence", "shape_ledger", "project_intake", "overview")}
             }))
             # Unit-test digest drift without constructing a full compiler project.
             self.assertEqual([], verify_receipt(receipt, rerun=False))

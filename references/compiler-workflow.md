@@ -61,7 +61,8 @@ has empty module mappings and cannot pass until the task is interpreted.
 Intermediate summaries are progress, not completion of a logical-depth request.
 After strict and rendered audits, follow [completion-gate.md](completion-gate.md):
 bind the agent's full-canvas and detail-crop inspection in `visual-review.json`,
-then require `complete_delivery.py` to return `DELIVERABLE`. A direct XML writer,
+then require per-view `complete_delivery.py` to return `DELIVERABLE` and
+`complete_project.py` to return `PROJECT_DELIVERABLE` for all selected files. A direct XML writer,
 successful export, or lower-level PASS remains `DRAFT/BLOCKED` without that
 receipt.
 After semantic acceptance, focused geometric work remains valid; incomplete
