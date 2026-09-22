@@ -110,7 +110,7 @@ In architecture IR:
 }
 ```
 
-The validator requires the attachment region to be the source node's direct owner or an ownership ancestor. The visible arrow label must contain `anchor_label`. This is especially important when one large region contains several expandable modules. If the label and region boundary still leave the origin perceptually ambiguous, add a short lightweight leader or a dedicated labeled egress tab; do not move the semantic parent to a fake proxy node.
+The validator requires the attachment region to be the source node's direct owner or an ownership ancestor. The visible arrow label must contain `anchor_label`, and `anchor_label` is one line. A Level-0 summary box lists its components on further lines, so only the primary first line identifies the module that owns the expansion; a derived anchor therefore uses that first line and never the whole box text. This is especially important when one large region contains several expandable modules. If the label and region boundary still leave the origin perceptually ambiguous, add a short lightweight leader or a dedicated labeled egress tab; do not move the semantic parent to a fake proxy node.
 
 For a reused definition, prefer a real source-backed canonical-definition node such as `Shared Sparse MoE definition`. Call-sites point to it through typed reuse relations or a shared family marker, and the expansion belongs to that canonical node. It may use its own node boundary or an owned-region boundary as the physical attachment.
 
@@ -121,13 +121,15 @@ definition object, use a named owner-region egress such as `FFN detail` while re
 real module node as `semantic_parent_definition_id`.
 
 `target-signpost` is a derived layout mode, not an allowed `visual_attachment.mode` in
-`architecture.json`. The planner may use it only after it cannot place another large child on
-any of the four direct parent/egress sides without collision. It positions the child outside
-the occupied component and puts a short block arrow in the final gap, with its tip attached to
-the child. The registry still records the real source node as semantic parent and an ancestor
-region as the ownership-bearing attachment ID. The visible label must name the source anchor.
-An explicitly requested `parent-node` attachment is strict and may not be converted to a
-signpost; reflow or fail instead.
+`architecture.json`. When the registered attachment and the child share a straight corridor
+that is not cable-like, the planner keeps that attachment: `parent-node` leaves the parent
+block, and `owner-region-boundary` leaves the owning region edge. A declared region egress is
+not discarded merely because it is a region egress. When no such corridor exists, the planner
+does not stop. It keeps the real source node as semantic parent, records an ancestor region as
+the ownership-bearing attachment, and places a short block arrow beside the child with its tip
+on the child boundary. Compile then rejects a signpost that misses the child, points the wrong
+way, or overlaps another region. The visible label must name the source anchor, and that anchor
+is the parent's first line when the parent box lists several components.
 
 ## 5. Geometry gate
 

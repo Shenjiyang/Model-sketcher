@@ -70,6 +70,16 @@ IO_OPS = {
 COMMUNICATION_OPS = {"all-to-all", "all-reduce", "all-gather", "reduce-scatter"}
 CACHE_OPS = {"cache-read", "cache-write", "cache-update"}
 CONTEXTUAL_OPS = {"add", "where", "routing", "dispatch", "combine", "state-update", "custom"}
+EXPLICIT_CLASS_KINDS = {"module"}
+
+
+def requires_explicit_visual_class(node: dict) -> bool:
+    """A module box must state whether it is one operation or a composite.
+
+    The composite fill would otherwise be reached by default, so a node that the
+    author decided not to expand could still be drawn as an expandable module.
+    """
+    return node.get("kind") in EXPLICIT_CLASS_KINDS
 
 
 def inferred_visual_class(node: dict) -> str | None:
@@ -121,7 +131,7 @@ def allowed_visual_classes(node: dict) -> set[str]:
     if kind == "state":
         return {"cache", "residual-op"}
     if kind == "module":
-        return {"composite-op", "tensor-op", "residual-op", "conditional"}
+        return set(SEMANTIC_PALETTE)
     contract = node.get("operator_contract")
     op_type = contract.get("op_type") if isinstance(contract, dict) else None
     inferred = inferred_visual_class(node)

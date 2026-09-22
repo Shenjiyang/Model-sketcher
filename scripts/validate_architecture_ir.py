@@ -14,6 +14,7 @@ from semantic_palette import (
     SEMANTIC_PALETTE,
     VISUAL_MODIFIERS,
     allowed_visual_classes,
+    requires_explicit_visual_class,
     resolve_visual_class,
 )
 
@@ -1016,6 +1017,12 @@ def validate(data: dict, base: Path, require_files: bool = False) -> list[str]:
             )
         elif node.get("kind") != "junction" and resolve_visual_class(node) is None:
             errors.append(f"node {node_id} has no resolvable semantic visual class")
+        if visual_class is None and requires_explicit_visual_class(node):
+            errors.append(
+                f"node {node_id} is a module and must declare visual_class explicitly: "
+                f"'composite-op' for a box that expands, or the operator class of the single "
+                f"operation it stands for plus visual_class_reason"
+            )
         inferred_class = resolve_visual_class({key: value for key, value in node.items() if key != "visual_class"})
         if visual_class is not None and visual_class != inferred_class and (
             not isinstance(node.get("visual_class_reason"), str) or not node["visual_class_reason"].strip()
@@ -1266,6 +1273,11 @@ def validate(data: dict, base: Path, require_files: bool = False) -> list[str]:
                         if not isinstance(anchor_label, str) or not anchor_label.strip():
                             errors.append(
                                 f"edge {edge_id} owner-region-boundary attachment requires anchor_label"
+                            )
+                        elif len(anchor_label.replace("\\n", "\n").splitlines()) > 1:
+                            errors.append(
+                                f"edge {edge_id} anchor_label must be one line naming the module, "
+                                f"not a multi-line summary: {anchor_label!r}"
                             )
                         elif isinstance(edge.get("label"), str) and anchor_label.casefold() not in edge["label"].casefold():
                             errors.append(

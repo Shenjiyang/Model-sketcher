@@ -43,7 +43,10 @@ def sample():
         },
         "nodes": {
             "a": {"label": "A", "kind": "interface", "region": "model", "evidence": ["cfg"], "order": 0},
-            "b": {"label": "B", "kind": "module", "region": "model", "evidence": ["code"], "order": 1},
+            "b": {
+                "label": "B", "kind": "module", "visual_class": "composite-op",
+                "region": "model", "evidence": ["code"], "order": 1,
+            },
         },
         "edges": {"a_b": {"source": "a", "target": "b", "kind": "tensor", "label": "x"}},
     }
@@ -145,7 +148,8 @@ def projection_sample():
         "semantic_layer": "shared-interface", "views": ["backend"],
     }
     data["nodes"]["d"] = {
-        "label": "DCP combine", "kind": "module", "region": "backend", "evidence": ["code"],
+        "label": "DCP combine", "kind": "module", "visual_class": "composite-op",
+        "region": "backend", "evidence": ["code"],
         "semantic_layer": "backend-implementation", "views": ["backend"],
     }
     data["edges"]["c_d"] = {
@@ -165,6 +169,7 @@ def strict_operator_sample():
         "operator_standard": "logical-tensor-ops",
     })
     data["nodes"]["b"]["kind"] = "operator"
+    data["nodes"]["b"].pop("visual_class", None)
     data["nodes"]["b"]["label"] = "Feature projection"
     data["nodes"]["b"]["parameter_shapes"] = ["W_proj: [D,D]"]
     data["nodes"]["b"]["operator_contract"] = {
@@ -297,7 +302,10 @@ def expansion_sample():
         },
     }
     data["nodes"] = {
-        "parent": {"label": "Parent definition", "kind": "module", "region": "parent", "evidence": ["code"]},
+        "parent": {
+            "label": "Parent definition", "kind": "module", "visual_class": "composite-op",
+            "region": "parent", "evidence": ["code"],
+        },
         "input": {"label": "Input", "kind": "interface", "region": "detail", "evidence": ["cfg"], "order": 0},
         "output": {"label": "Output", "kind": "operator", "region": "detail", "evidence": ["code"], "order": 1},
     }
@@ -340,8 +348,8 @@ class CompilerPipelineTest(unittest.TestCase):
                 "evidence": ["code"],
             },
             "template_out": {
-                "label": "Template output", "kind": "module", "region": "templates",
-                "evidence": ["code"],
+                "label": "Template output", "kind": "module", "visual_class": "composite-op",
+                "region": "templates", "evidence": ["code"],
             },
         })
         data["edges"]["template_path"] = {
@@ -644,6 +652,18 @@ class CompilerPipelineTest(unittest.TestCase):
         data["nodes"]["b"]["visual_class"] = "vector-op"
         errors = validate(data, Path("."))
         self.assertTrue(any("conflicts with its kind/op_type" in error for error in errors))
+
+    def test_module_must_declare_its_visual_class(self):
+        data = sample()
+        data["nodes"]["b"].pop("visual_class")
+        errors = validate(data, Path("."))
+        self.assertTrue(any("must declare visual_class explicitly" in error for error in errors))
+        data["nodes"]["b"]["visual_class"] = "tensor-op"
+        data["nodes"]["b"]["visual_class_reason"] = "This summary node is one projection."
+        self.assertEqual(validate(data, Path(".")), [])
+        data["nodes"]["b"]["visual_class"] = "vector-op"
+        data["nodes"]["b"]["visual_class_reason"] = "This summary node is one RMSNorm."
+        self.assertEqual(validate(data, Path(".")), [])
 
     def test_visual_overrides_require_source_backed_rationale(self):
         data = sample()
@@ -1129,8 +1149,14 @@ class CompilerPipelineTest(unittest.TestCase):
     def test_parallel_module_summary_sequences_become_adjacent_vertical_lanes(self):
         data = sample()
         data["nodes"].update({
-            "left": {"label": "Left", "kind": "module", "region": "model", "evidence": ["code"]},
-            "right": {"label": "Right", "kind": "module", "region": "model", "evidence": ["code"]},
+            "left": {
+                "label": "Left", "kind": "module", "visual_class": "composite-op",
+                "region": "model", "evidence": ["code"],
+            },
+            "right": {
+                "label": "Right", "kind": "module", "visual_class": "composite-op",
+                "region": "model", "evidence": ["code"],
+            },
             "out": {"label": "Out", "kind": "interface", "region": "model", "evidence": ["code"]},
         })
         data["edges"] = {
@@ -1174,8 +1200,14 @@ class CompilerPipelineTest(unittest.TestCase):
             },
         }
         data["nodes"] = {
-            "left_node": {"label": "Left", "kind": "module", "region": "left", "evidence": ["code"]},
-            "right_node": {"label": "Right", "kind": "module", "region": "right", "evidence": ["code"]},
+            "left_node": {
+                "label": "Left", "kind": "module", "visual_class": "composite-op",
+                "region": "left", "evidence": ["code"],
+            },
+            "right_node": {
+                "label": "Right", "kind": "module", "visual_class": "composite-op",
+                "region": "right", "evidence": ["code"],
+            },
         }
         data["edges"] = {}
         self.assertEqual(validate(data, Path(".")), [])
@@ -1271,8 +1303,8 @@ class CompilerPipelineTest(unittest.TestCase):
     def test_explicit_parent_node_attachment_is_not_auto_promoted(self):
         data = expansion_sample()
         data["nodes"]["sibling"] = {
-            "label": "Sibling module", "kind": "module", "region": "parent",
-            "evidence": ["code"], "order": 1,
+            "label": "Sibling module", "kind": "module", "visual_class": "composite-op",
+            "region": "parent", "evidence": ["code"], "order": 1,
         }
         data["regions"]["parent"]["operator_sequences"] = [
             {"id": "main", "nodes": ["parent", "sibling"]},
@@ -1440,6 +1472,37 @@ class CompilerPipelineTest(unittest.TestCase):
         self.assertTrue(any("does not own source node" in error for error in errors))
         self.assertTrue(any("must name anchor_label" in error for error in errors))
 
+    def test_multiline_summary_anchors_hierarchy_arrows_by_its_first_line(self):
+        data = expansion_sample()
+        data["nodes"]["parent"]["label"] = "Parent definition\nStage A\nStage B"
+        data["edges"]["expand_detail"]["visual_attachment"] = {
+            "mode": "owner-region-boundary", "region": "parent", "side": "north",
+            "anchor_label": "Parent definition\nStage A\nStage B",
+        }
+        errors = validate(data, Path("."))
+        self.assertTrue(any("anchor_label must be one line" in error for error in errors))
+
+        del data["edges"]["expand_detail"]["visual_attachment"]
+        self.assertEqual(validate(data, Path(".")), [])
+        layout = plan(data, "digest")
+        arrow = layout["hierarchy_arrows"]["expand_detail"]
+        self.assertEqual(arrow["anchor_label"], "Parent definition")
+        self.assertNotIn("Stage A", arrow["display_label"])
+        self.assertEqual(validate_hierarchy_arrow_geometry(data, layout), [])
+        tree = compile_diagram(data, layout)
+        label = tree.find(".//mxCell[@id='expand:expand_detail']").get("value")
+        self.assertIn(arrow["anchor_label"], label)
+
+    def test_signpost_label_does_not_repeat_its_own_anchor(self):
+        data = expansion_sample()
+        data["nodes"]["parent"]["label"] = "Vision Tower\nPatch Embed"
+        data["edges"]["expand_detail"]["label"] = "Vision Tower"
+        layout = plan(data, "digest")
+        arrow = layout["hierarchy_arrows"]["expand_detail"]
+        self.assertEqual(arrow["anchor_label"], "Vision Tower")
+        self.assertEqual(arrow["display_label"], "Vision Tower")
+        self.assertEqual(validate_hierarchy_arrow_geometry(data, layout), [])
+
     def test_region_boundary_expand_rejects_invalid_or_unavailable_side(self):
         data = expansion_sample()
         data["edges"]["expand_detail"].update({
@@ -1506,14 +1569,18 @@ class CompilerPipelineTest(unittest.TestCase):
                 arrow = plan_hierarchy_arrows(data, layout)["expand_detail"]
                 self.assertEqual(arrow["direction"], expected)
 
-    def test_hierarchy_arrow_planner_rejects_diagonal_or_tiny_corridor(self):
+    def test_hierarchy_arrow_planner_uses_signpost_without_a_straight_corridor(self):
         data = expansion_sample()
         layout = {
             "nodes": {"parent": {"x": 0, "y": 0, "w": 60, "h": 60}, "input": {"x": 220, "y": 220, "w": 50, "h": 50}},
             "regions": {"parent": {"x": 0, "y": 0, "w": 100, "h": 100}, "detail": {"x": 200, "y": 200, "w": 120, "h": 120}},
         }
-        with self.assertRaisesRegex(ValueError, "no straight hierarchy-arrow corridor"):
-            plan_hierarchy_arrows(data, layout)
+        arrow = plan_hierarchy_arrows(data, layout)["expand_detail"]
+        self.assertEqual(arrow["attachment_mode"], "target-signpost")
+        self.assertEqual(arrow["parent"], "parent")
+        self.assertEqual(arrow["child_region"], "detail")
+        self.assertEqual(arrow["anchor_label"], "Parent definition")
+        self.assertEqual(validate_hierarchy_arrow_geometry(data, layout | {"hierarchy_arrows": {"expand_detail": arrow}}), [])
 
     def test_hierarchy_arrows_are_recomputed_after_final_layout_movement(self):
         data = expansion_sample()
@@ -1888,7 +1955,10 @@ class CompilerPipelineTest(unittest.TestCase):
             "flow_direction": "bottom-to-top", "level": 0,
             "granularity": "module-summary", "order": 1,
         }
-        old["nodes"]["c"] = {"label": "C", "kind": "module", "region": "side", "evidence": ["code"]}
+        old["nodes"]["c"] = {
+            "label": "C", "kind": "module", "visual_class": "composite-op",
+            "region": "side", "evidence": ["code"],
+        }
         previous = plan(old, "old")
         new = json.loads(json.dumps(old))
         new["nodes"]["a"]["label"] = "A much wider revised label"

@@ -28,9 +28,9 @@ with a `#111111` border and red text.
 ## Resolution rules
 
 The compiler deterministically infers unambiguous classes from `kind` and
-`operator_contract.op_type`. An explicit `visual_class` is required whenever
-the default would lose material meaning, and is recommended for module-summary
-nodes. When it differs from the inferred class, add a non-empty
+`operator_contract.op_type`. `kind: module` has no inferred default and always carries an explicit
+`visual_class`. Elsewhere an explicit `visual_class` is required whenever
+the default would lose material meaning. When it differs from the inferred class, add a non-empty
 `visual_class_reason`; a `tp-partition` modifier likewise requires
 `visual_modifier_reason`. Both remain attached to a node that already cites
 source evidence. The validator rejects explicit classes outside these semantic bounds:
@@ -44,8 +44,11 @@ source evidence. The validator rejects explicit classes outside these semantic b
 - an add may be `residual-op` only when its role is genuinely residual;
 - a runtime `where` may be `conditional` only when it represents control
   selection rather than ordinary elementwise selection;
-- modules default to `composite-op`, but a module that is exactly one tensor
-  operation may explicitly use `tensor-op`;
+- a module has no default class and must declare `visual_class` itself:
+  `composite-op` for a box that expands into a child region, or the operator
+  class of the single operation it stands for, with `visual_class_reason`.
+  Deciding not to expand a module and leaving its color unstated is the same
+  authoring decision left half-done, so the validator rejects it;
 - `custom` is the escape hatch for source-backed operations whose definition
   makes another canonical class more accurate. It is not permission to invent
   a new color.

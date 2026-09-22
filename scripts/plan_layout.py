@@ -33,6 +33,25 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def semantic_anchor_label(node: dict, fallback: str = "") -> str:
+    """Return the one-line module name a hierarchy arrow must carry.
+
+    A Level-0 summary box lists its components on further lines, so only the
+    primary first line identifies the module that owns the expansion.
+    """
+    lines = str(node.get("label", fallback)).replace("\\n", "\n").splitlines()
+    return lines[0].strip() if lines and lines[0].strip() else fallback
+
+
+def hierarchy_display_label(anchor_label: str, edge_label: str) -> str:
+    """Compose the visible arrow text without repeating the anchor."""
+    if not anchor_label:
+        return edge_label
+    if anchor_label.casefold() in edge_label.casefold():
+        return edge_label
+    return f"{anchor_label} -> {edge_label}"
+
+
 def node_size(node: dict, font_size: float = 18.0) -> tuple[float, float]:
     """Estimate unwrapped label bounds in font units, including glyph padding."""
     font_size = float(font_size)
@@ -203,13 +222,14 @@ def _resolved_attachment(data: dict, edge: dict, side: str, mode_override: str |
     if mode_override == "target-signpost":
         source_region = data["nodes"][edge["source"]]["region"]
         owner = declared.get("region") or _root_region(source_region, data["regions"])
-        source_label = str(data["nodes"][edge["source"]].get("label", edge["source"])).replace("\\n", "\n").splitlines()[0]
-        anchor_label = declared.get("anchor_label") or source_label
+        anchor_label = declared.get("anchor_label") or semantic_anchor_label(
+            data["nodes"][edge["source"]], edge["source"]
+        )
         label = str(edge.get("label", ""))
         return {
             "mode": "target-signpost", "id": owner, "side": side,
             "anchor_label": anchor_label,
-            "display_label": label if anchor_label.casefold() in label.casefold() else f"{anchor_label} -> {label}",
+            "display_label": hierarchy_display_label(anchor_label, label),
             "automatic": True,
         }
     if declared:
@@ -222,14 +242,14 @@ def _resolved_attachment(data: dict, edge: dict, side: str, mode_override: str |
         }
     source_region = data["nodes"][edge["source"]]["region"]
     owner = _root_region(source_region, data["regions"])
-    source_label = str(data["nodes"][edge["source"]].get("label", edge["source"])).replace("\\n", "\n").splitlines()[0]
+    anchor_label = semantic_anchor_label(data["nodes"][edge["source"]], edge["source"])
     label = str(edge.get("label", ""))
     return {
         "mode": "owner-region-boundary",
         "id": owner,
         "side": side,
-        "anchor_label": source_label,
-        "display_label": label if source_label.casefold() in label.casefold() else f"{source_label} -> {label}",
+        "anchor_label": anchor_label,
+        "display_label": hierarchy_display_label(anchor_label, label),
         "automatic": True,
     }
 
@@ -466,16 +486,21 @@ def plan_hierarchy_arrows(data: dict, layout: dict) -> dict:
         child_region_id = data["nodes"][target_id]["region"]
         attachment_mode, attachment_id, parent, attachment = hierarchy_attachment(edge_id, edge, layout)
         child = region_boxes[child_region_id]
+        peers = sorted(eid for eid, candidate in data.get("edges", {}).items()
+                       if candidate.get("kind") == "expand" and
+                       data["nodes"][candidate["target"]]["region"] == child_region_id)
+        slot = peers.index(edge_id) if edge_id in peers else 0
+        fraction = 0.5 if len(peers) < 2 else 0.25 + 0.5 * slot / (len(peers) - 1)
         preferred_side = attachment.get("side")
         if attachment_mode == "target-signpost":
             if preferred_side == "north":
-                box = {"x": child["x"] + (child["w"] - HIERARCHY_ARROW_THICKNESS) / 2, "y": child["y"] + child["h"], "w": HIERARCHY_ARROW_THICKNESS, "h": EXPANSION_GAP}
+                box = {"x": child["x"] + (child["w"] - HIERARCHY_ARROW_THICKNESS) * fraction, "y": child["y"] + child["h"], "w": HIERARCHY_ARROW_THICKNESS, "h": EXPANSION_GAP}
             elif preferred_side == "south":
-                box = {"x": child["x"] + (child["w"] - HIERARCHY_ARROW_THICKNESS) / 2, "y": child["y"] - EXPANSION_GAP, "w": HIERARCHY_ARROW_THICKNESS, "h": EXPANSION_GAP}
+                box = {"x": child["x"] + (child["w"] - HIERARCHY_ARROW_THICKNESS) * fraction, "y": child["y"] - EXPANSION_GAP, "w": HIERARCHY_ARROW_THICKNESS, "h": EXPANSION_GAP}
             elif preferred_side == "west":
-                box = {"x": child["x"] + child["w"], "y": child["y"] + (child["h"] - HIERARCHY_ARROW_THICKNESS) / 2, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
+                box = {"x": child["x"] + child["w"], "y": child["y"] + (child["h"] - HIERARCHY_ARROW_THICKNESS) * fraction, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
             elif preferred_side == "east":
-                box = {"x": child["x"] - EXPANSION_GAP, "y": child["y"] + (child["h"] - HIERARCHY_ARROW_THICKNESS) / 2, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
+                box = {"x": child["x"] - EXPANSION_GAP, "y": child["y"] + (child["h"] - HIERARCHY_ARROW_THICKNESS) * fraction, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
             else:
                 raise ValueError(f"expand relation {edge_id} target signpost lacks a valid direction")
             arrows[edge_id] = {
@@ -512,12 +537,36 @@ def plan_hierarchy_arrows(data: dict, layout: dict) -> dict:
             if right_gap >= MIN_HIERARCHY_ARROW_LENGTH:
                 candidates.append((right_gap, "east", {"x": parent["x"] + parent["w"], "y": y, "w": right_gap, "h": thickness}))
 
+        # A legal overlap alone is not enough: a distant corridor becomes a cable
+        # after compilation and must use the child-adjacent signpost fallback.
+        candidates = [item for item in candidates
+                      if max(item[2]["w"], item[2]["h"]) / min(item[2]["w"], item[2]["h"])
+                      <= MAX_HIERARCHY_ARROW_ASPECT_RATIO]
+
         if not candidates:
-            raise ValueError(
-                f"expand relation {edge_id} has no straight hierarchy-arrow corridor from "
-                f"{attachment_mode}:{attachment_id} to region:{child_region_id}; "
-                "reflow the regions or change the declared attachment side before compiling"
+            # No straight corridor. Do not fail the planner; keep the semantic
+            # parent and place a registered signpost next to the child. Compile
+            # still rejects a signpost that misses the child or covers another region.
+            dx = (child["x"] + child["w"] / 2) - (parent["x"] + parent["w"] / 2)
+            dy = (child["y"] + child["h"] / 2) - (parent["y"] + parent["h"] / 2)
+            direction = ("east" if dx >= 0 else "west") if abs(dx) >= abs(dy) else ("south" if dy >= 0 else "north")
+            if direction == "north":
+                box = {"x": child["x"] + (child["w"] - HIERARCHY_ARROW_THICKNESS) * fraction, "y": child["y"] + child["h"], "w": HIERARCHY_ARROW_THICKNESS, "h": EXPANSION_GAP}
+            elif direction == "south":
+                box = {"x": child["x"] + (child["w"] - HIERARCHY_ARROW_THICKNESS) * fraction, "y": child["y"] - EXPANSION_GAP, "w": HIERARCHY_ARROW_THICKNESS, "h": EXPANSION_GAP}
+            elif direction == "west":
+                box = {"x": child["x"] + child["w"], "y": child["y"] + (child["h"] - HIERARCHY_ARROW_THICKNESS) * fraction, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
+            else:
+                box = {"x": child["x"] - EXPANSION_GAP, "y": child["y"] + (child["h"] - HIERARCHY_ARROW_THICKNESS) * fraction, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
+            owner = attachment.get("region", data["nodes"][source_id]["region"])
+            anchor = attachment.get("anchor_label") or semantic_anchor_label(
+                data["nodes"][source_id], source_id
             )
+            arrows[edge_id] = {**{key: round(value, 2) for key, value in box.items()}, "direction": direction,
+                "parent": source_id, "attachment_mode": "target-signpost", "attachment_id": owner,
+                "child_region": child_region_id, "anchor_label": anchor,
+                "display_label": hierarchy_display_label(anchor, str(edge["label"]))}
+            continue
         _, direction, box = min(
             candidates,
             key=lambda item: (0 if item[1] == preferred_side else 1, item[0], item[1]),
