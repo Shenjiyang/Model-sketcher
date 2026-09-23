@@ -85,6 +85,35 @@ class LayoutIntentsTests(unittest.TestCase):
         first, second = centers(horizontal, 'r'), centers(horizontal, 's')
         self.assertGreater(abs(second[0] - first[0]), abs(second[1] - first[1]))
 
+    def test_separate_composition_keeps_upward_interiors_under_a_rightward_macro(self):
+        data = two_regions()
+        del data['edges']['de']
+        data['project'] = {'output_view': 'hierarchy-master'}
+        data['edges']['expand_s'] = {'source': 'd', 'target': 'e', 'kind': 'expand', 'label': 'Output'}
+        hints = {'macro': {'direction': 'right', 'composition': 'separate'}}
+        sizes = {n: node_size(v, 18) for n, v in data['nodes'].items()}
+        _, graph = build_graph(data, sizes, 20, hints)
+        self.assertEqual(graph['layoutOptions']['elk.hierarchyHandling'], 'SEPARATE_CHILDREN')
+        self.assertEqual([(e['sources'], e['targets']) for e in graph['edges']],
+                         [(['region:r'], ['region:s'])])
+        region = {c['id']: c for c in graph['children']}['region:r']
+        self.assertEqual(region['layoutOptions']['elk.direction'], 'UP')
+        self.assertEqual({e['id'] for e in region['edges']}, {'ab', 'ac', 'bd', 'cd'})
+
+        layout = plan_compound(data, 'digest', {'layout_hints': hints}, defer_hierarchy_arrows=True)
+        nodes, regions = layout['nodes'], layout['regions']
+        self.assertGreater(nodes['a']['y'], nodes['b']['y'])
+        self.assertGreater(nodes['b']['y'], nodes['d']['y'])
+        self.assertGreater(nodes['e']['y'], nodes['f']['y'])
+        self.assertGreater(regions['s']['x'], regions['r']['x'] + regions['r']['w'])
+        self.assertEqual(layout['hierarchy_attachments']['expand_s']['side'], 'east')
+
+        joined = two_regions()
+        with self.assertRaisesRegex(ValueError, 'cannot route ordinary edges between regions'):
+            build_graph(joined, sizes, 20, hints)
+        with self.assertRaises(ValueError):
+            validate_hints(joined, {'macro': {'composition': 'nested'}})
+
     def test_changed_hints_cannot_silently_reuse_layout(self):
         from test_precision_layout import fixture
         data, base = fixture()

@@ -67,7 +67,93 @@ def build_graph(data, sizes, title_font, hints=None):
     if 'region_order' in hints:
         graph['layoutOptions']['elk.layered.considerModelOrder.strategy'] = 'NODES_AND_EDGES'
     apply_macro_hints(graph, hints)
+    if hints.get('macro', {}).get('composition') == 'separate':
+        separate_region_layouts(data, graph, containers, hints)
     return problem, graph
+
+
+# A region laid out on its own gets no label room from shared global layers, so its
+# default 48 px layer gap cannot hold a two-line tensor label between bent segments.
+SEPARATE_INTERIOR_LAYER_SPACING = 64.0
+MACRO_EXPANSION_PREFIX = '__macro_expansion__:'
+
+
+def separate_region_layouts(data, graph, containers, hints):
+    """Lay out each region's upward flow on its own and the root as region boxes.
+
+    In the joint graph the root direction also layers every operator, so a
+    rightward macro turns operator chains into staircases. Here each container
+    keeps `UP` and its own edges, and the root sees only region boxes plus one
+    edge per cross-region expansion, laid out in the macro direction.
+    """
+    region_of = {nid: node['region'] for nid, node in data['nodes'].items()}
+    root_of = {rid: rid for rid in data['regions']}
+    for rid in data['regions']:
+        cursor = rid
+        while data['regions'][cursor].get('parent') is not None:
+            cursor = data['regions'][cursor]['parent']
+        root_of[rid] = cursor
+    crossing = []
+    for edge in graph['edges']:
+        source = edge['sources'][0].split(':', 1)[0]
+        target = edge['targets'][0].split(':', 1)[0]
+        if region_of[source] != region_of[target]:
+            crossing.append(edge['id'])
+            continue
+        containers[region_of[source]].setdefault('edges', []).append(edge)
+    if crossing:
+        raise ValueError(
+            'macro.composition separate lays out each region on its own and cannot route ordinary '
+            f'edges between regions: {sorted(crossing)[:5]}; use the joint composition'
+        )
+    graph['edges'] = []
+    key = 'elk.layered.spacing.nodeNodeBetweenLayers'
+    for container in containers.values():
+        options = container['layoutOptions']
+        options['elk.hierarchyHandling'] = 'SEPARATE_CHILDREN'
+        options[key] = str(max(float(options.get(key, 0)), SEPARATE_INTERIOR_LAYER_SPACING))
+    # Explicit per-region spacing still wins over the separate-layout floor.
+    apply_region_hints(containers, {'regions': {
+        rid: {k: v for k, v in config.items() if k != 'node_order'}
+        for rid, config in hints.get('regions', {}).items()
+    }})
+    graph['layoutOptions']['elk.hierarchyHandling'] = 'SEPARATE_CHILDREN'
+    seen = set()
+    for edge_id, edge in sorted(data.get('edges', {}).items()):
+        if edge.get('kind') != 'expand':
+            continue
+        pair = (root_of[region_of[edge['source']]], root_of[region_of[edge['target']]])
+        if pair[0] == pair[1] or pair in seen:
+            continue
+        seen.add(pair)
+        graph['edges'].append({
+            'id': MACRO_EXPANSION_PREFIX + edge_id,
+            'sources': ['region:' + pair[0]],
+            'targets': ['region:' + pair[1]],
+        })
+
+
+def macro_expansion_attachments(data, layout):
+    """Leave each ELK-placed child through the owner-region side that faces it."""
+    from plan_layout import _resolved_attachment, _root_region
+    attachments = {}
+    for edge_id, edge in sorted(data.get('edges', {}).items()):
+        if edge.get('kind') != 'expand' or edge.get('visual_attachment'):
+            continue
+        owner_id = _root_region(data['nodes'][edge['source']]['region'], data['regions'])
+        child_id = data['nodes'][edge['target']]['region']
+        if owner_id == child_id:
+            continue
+        owner, child = layout['regions'][owner_id], layout['regions'][child_id]
+        gaps = {
+            'east': child['x'] - (owner['x'] + owner['w']),
+            'west': owner['x'] - (child['x'] + child['w']),
+            'south': child['y'] - (owner['y'] + owner['h']),
+            'north': owner['y'] - (child['y'] + child['h']),
+        }
+        side = max(gaps, key=gaps.get)
+        attachments[edge_id] = _resolved_attachment(data, edge, side)
+    return attachments
 
 
 def flatten_result(result, node_ids):
@@ -202,8 +288,12 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
     }
     if data['project'].get('semantic_view'):
         layout['semantic_view'] = data['project']['semantic_view']
-    with phase('macro region placement'):
-        auto_place_expansion_regions(data, layout)
+    if hints.get('macro', {}).get('composition') != 'separate':
+        # The joint graph never saw expansions; re-place disconnected regions around owners.
+        with phase('macro region placement'):
+            auto_place_expansion_regions(data, layout)
+    else:
+        layout['hierarchy_attachments'] = macro_expansion_attachments(data, layout)
     layout['canvas'] = {
         'width': math.ceil(max(box['x'] + box['w'] for box in layout['regions'].values()) + 40),
         'height': math.ceil(max(box['y'] + box['h'] for box in layout['regions'].values()) + 40),

@@ -145,8 +145,10 @@ direction, so every child lands in a later layer above its parent: the master be
 bands, with no child beside its parent. On the Qwen3.5-397B-A17B master this doubled the canvas
 width, left no straight hierarchy corridor (13 of 13 arrows became signposts), and raised
 attribution warnings from 3 to 11, with or without high straightness priority on those edges.
-This result does not cover a composition in which region interiors and the macro region graph
-are laid out separately with different directions; that configuration is untested.
+Laying out region interiors and the macro region graph separately
+(`layout_hints.macro.composition: separate`, see `layout-engine-adapter.md`) keeps interiors
+intact but did not fix this either: ELK still does not keep each child overlapping its own
+parent, so most arrows remained signposts.
 
 A signpost that passes those gates can still be orphaned on the page. The planner, the
 compiler pipeline, and `refresh_hierarchy_arrows.py` therefore print non-blocking

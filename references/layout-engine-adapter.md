@@ -143,6 +143,22 @@ The supported hints are:
   making top-level blocks more compact or giving cross-region routes more air.
 - `macro.alignment`: root Brandes-Koepf alignment preference, with the same
   accepted values as region alignment.
+- `macro.composition`: `joint` (default) or `separate`. `joint` lays out one
+  `INCLUDE_CHILDREN` graph, so `macro.direction` also layers operators inside
+  regions; a rightward macro therefore turns operator chains into staircases.
+  `separate` lays out each region's upward flow on its own and the root as
+  region boxes only, joined by one layout edge per cross-region expansion, in
+  `macro.direction`; the post-ELK expansion placer is skipped and each arrow
+  leaves the owner-region side facing its child. Ordinary edges between regions
+  are rejected in `separate`. Interior between-layer spacing is raised to at
+  least 64 px so tensor labels still fit. On the Qwen3.5-397B-A17B master,
+  interiors matched `joint` (median step drift 14.5 px either way), but
+  macro placement was worse in both `up` and `right`: about twice the canvas
+  area, 11 of 13 hierarchy arrows as signposts instead of 4, and 10 to 13
+  attribution warnings instead of 3. ELK aligns each layer of large region
+  boxes as a column and does not keep a child overlapping its own parent, so no
+  straight corridor survives. Keep `joint` for hierarchy masters unless a
+  measured comparison says otherwise.
 - `region_order`: every visible region once; an input-order preference.
 - `regions.<id>.node_order`: every direct visible node in that region once;
   activates ELK model-order preference. Use it to suggest parallel branch order,

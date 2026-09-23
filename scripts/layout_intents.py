@@ -18,6 +18,9 @@ MACRO_SPACING = {
 }
 ALIGNMENTS = {'LEFTUP', 'RIGHTUP', 'LEFTDOWN', 'RIGHTDOWN', 'BALANCED'}
 DIRECTIONS = {'up': 'UP', 'down': 'DOWN', 'left': 'LEFT', 'right': 'RIGHT'}
+# joint: one INCLUDE_CHILDREN graph, so macro direction also layers region interiors.
+# separate: each region lays out its own upward flow; the root lays out region boxes only.
+COMPOSITIONS = {'joint', 'separate'}
 
 
 def mapping(value, name):
@@ -37,8 +40,10 @@ def validate_hints(data, hints, *, projected=True):
     if set(hints) - {'macro', 'region_order', 'regions', 'edge_ports', 'port_order'}:
         raise ValueError('unsupported layout_hints field')
     macro = mapping(hints.get('macro', {}), 'layout_hints.macro')
-    if set(macro) - {'direction', 'spacing', 'alignment'}:
+    if set(macro) - {'direction', 'spacing', 'alignment', 'composition'}:
         raise ValueError('unsupported layout_hints.macro field')
+    if 'composition' in macro and macro['composition'] not in COMPOSITIONS:
+        raise ValueError(f'macro.composition must be one of {sorted(COMPOSITIONS)}')
     if 'direction' in macro and (not isinstance(macro['direction'], str)
                                  or macro['direction'] not in DIRECTIONS):
         raise ValueError('macro.direction must be up, down, left, or right')
