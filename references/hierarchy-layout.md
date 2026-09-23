@@ -139,6 +139,13 @@ semantic parent block's own row or column, beside or beyond regions already plac
 last beyond everything placed. It picks the slot with the fewest regions between the parent
 block and the signpost, then the fewest nearer expandable modules, then the shortest distance.
 
+Do not hand expansions to ELK as layout-only edges to get this placement. Layered ELK treats
+such an edge as a layer dependency, so every child lands in a later layer than its parent: the
+master becomes level bands stacked along the flow axis and spread across it, with no child
+beside its parent. On the Qwen3.5-397B-A17B master this doubled the canvas width, left no
+straight hierarchy corridor at all (13 of 13 arrows became signposts), and raised attribution
+warnings from 3 to 11, with or without high straightness priority on those edges.
+
 A signpost that passes those gates can still be orphaned on the page. The planner, the
 compiler pipeline, and `refresh_hierarchy_arrows.py` therefore print non-blocking
 `hierarchy attribution` warnings for every target signpost when either a region other than the
