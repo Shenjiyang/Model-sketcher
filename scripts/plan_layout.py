@@ -49,6 +49,9 @@ def hierarchy_display_label(anchor_label: str, edge_label: str) -> str:
         return edge_label
     if anchor_label.casefold() in edge_label.casefold():
         return edge_label
+    if edge_label.casefold() in anchor_label.casefold():
+        # "Vision Block x27" already names the "Vision Block" child.
+        return anchor_label
     return f"{anchor_label} -> {edge_label}"
 
 
@@ -217,6 +220,58 @@ def _corridor_box(parent: dict, child: dict, side: str) -> dict | None:
     return {"x": parent["x"] + parent["w"], "y": y, "w": child["x"] - parent["x"] - parent["w"], "h": height}
 
 
+def _signpost_box(child: dict, side: str) -> dict:
+    """Short arrow in the gap on the parent-facing side of a placed child."""
+    if side == "north":
+        return {"x": child["x"] + (child["w"] - HIERARCHY_ARROW_THICKNESS) / 2, "y": child["y"] + child["h"], "w": HIERARCHY_ARROW_THICKNESS, "h": EXPANSION_GAP}
+    if side == "south":
+        return {"x": child["x"] + (child["w"] - HIERARCHY_ARROW_THICKNESS) / 2, "y": child["y"] - EXPANSION_GAP, "w": HIERARCHY_ARROW_THICKNESS, "h": EXPANSION_GAP}
+    if side == "west":
+        return {"x": child["x"] + child["w"], "y": child["y"] + (child["h"] - HIERARCHY_ARROW_THICKNESS) / 2, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
+    return {"x": child["x"] - EXPANSION_GAP, "y": child["y"] + (child["h"] - HIERARCHY_ARROW_THICKNESS) / 2, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
+
+
+def _signpost_slots(side: str, parent: dict, source: dict, child: dict,
+                    placed: list[dict], anchor: dict) -> list[tuple[float, float]]:
+    """Child positions on one side of the owner, nearest first, for a signpost.
+
+    Every slot stays beyond the owner on that side so the signpost still points
+    from the owner toward the child. Slots also align with the semantic parent
+    block itself, not only its owner region, so a module in the middle of a
+    column can expand beside its own row. The last slots clear everything
+    already placed, so a legal choice always exists.
+    """
+    anchor_x = anchor["x"] + anchor["w"] / 2 - child["w"] / 2
+    anchor_y = anchor["y"] + anchor["h"] / 2 - child["h"] / 2
+    gap, gutter = EXPANSION_GAP + 8.0, EXPANSION_REGION_GUTTER
+    if side in {"north", "south"}:
+        if side == "north":
+            limit = source["y"] - EXPANSION_GAP - child["h"]
+            beyond = [box["y"] - child["h"] - gap for box in placed if box["y"] - child["h"] - gap <= limit]
+            outer = min(box["y"] for box in placed) - EXPANSION_GAP - child["h"]
+        else:
+            limit = source["y"] + source["h"] + EXPANSION_GAP
+            beyond = [box["y"] + box["h"] + gap for box in placed if box["y"] + box["h"] + gap >= limit]
+            outer = max(box["y"] + box["h"] for box in placed) + EXPANSION_GAP
+        ys = [limit, *beyond, outer]
+        xs = [anchor_x, *(x for x, _ in _side_positions(parent, child, side))]
+        xs += [value for box in placed for value in (box["x"] + box["w"] + gutter, box["x"] - child["w"] - gutter)]
+        return list(dict.fromkeys((round(x, 2), round(y, 2)) for y in ys for x in xs))
+    if side == "west":
+        limit = source["x"] - EXPANSION_GAP - child["w"]
+        beyond = [box["x"] - child["w"] - gap for box in placed if box["x"] - child["w"] - gap <= limit]
+        outer = min(box["x"] for box in placed) - EXPANSION_GAP - child["w"]
+    else:
+        limit = source["x"] + source["w"] + EXPANSION_GAP
+        beyond = [box["x"] + box["w"] + gap for box in placed if box["x"] + box["w"] + gap >= limit]
+        outer = max(box["x"] + box["w"] for box in placed) + EXPANSION_GAP
+    xs = [limit, *beyond, outer]
+    ys = [anchor_y, anchor["y"], anchor["y"] + anchor["h"] - child["h"],
+          *(y for _, y in _side_positions(parent, child, side))]
+    ys += [value for box in placed for value in (box["y"] + box["h"] + gutter, box["y"] - child["h"] - gutter)]
+    return list(dict.fromkeys((round(x, 2), round(y, 2)) for x in xs for y in ys))
+
+
 def _resolved_attachment(data: dict, edge: dict, side: str, mode_override: str | None = None) -> dict:
     declared = edge.get("visual_attachment") or {}
     if mode_override == "target-signpost":
@@ -298,6 +353,7 @@ def auto_place_expansion_regions(data: dict, layout: dict) -> None:
     corridor_boxes: list[dict] = []
     attachments: dict[str, dict] = {}
     component_x = 0.0
+    rivals = sorted({edge["source"] for _, edge in expand_edges})
 
     def occupied(candidate: dict, ignore: set[str]) -> bool:
         return any(
@@ -392,42 +448,36 @@ def auto_place_expansion_regions(data: dict, layout: dict) -> None:
                             f"explicit parent-node attachment; rejected={dict(rejected)}"
                         )
                     placed_boxes = [layout["regions"][item] for item in placed]
-                    bounds = {
-                        "left": min(box["x"] for box in placed_boxes),
-                        "right": max(box["x"] + box["w"] for box in placed_boxes),
-                        "top": min(box["y"] for box in placed_boxes),
-                        "bottom": max(box["y"] + box["h"] for box in placed_boxes),
-                    }
+                    semantic_parent = layout["nodes"][edge["source"]]
                     signpost_choices: list[tuple[tuple, str, float, float, dict]] = []
                     for side_index, side in enumerate(HIERARCHY_SIDES):
-                        if side in {"north", "south"}:
-                            x = parent_box["x"] + (parent_box["w"] - child_box["w"]) / 2
-                            y = (
-                                bounds["top"] - EXPANSION_GAP - child_box["h"]
-                                if side == "north" else bounds["bottom"] + EXPANSION_GAP
+                        for x, y in _signpost_slots(side, parent_box, source_box, child_box, placed_boxes,
+                                                    semantic_parent):
+                            candidate = {**child_box, "x": x, "y": y}
+                            if occupied(candidate, set()):
+                                continue
+                            signpost = _signpost_box(candidate, side)
+                            if any(_boxes_collide(signpost, box, 0.0) for box in placed_boxes):
+                                continue
+                            if any(_boxes_collide(signpost, box, 8.0) for box in corridor_boxes):
+                                continue
+                            # A reader traces a signpost back by eye: prefer slots with no
+                            # region between it and the parent, then the nearest slot.
+                            crossed = sum(
+                                1 for box in placed_boxes
+                                if not _contains(box, semantic_parent)
+                                and _segment_box_length(_center(semantic_parent), _center(signpost), box) > 1.0
                             )
-                        else:
-                            x = (
-                                bounds["left"] - EXPANSION_GAP - child_box["w"]
-                                if side == "west" else bounds["right"] + EXPANSION_GAP
+                            parent_gap = _box_gap(semantic_parent, signpost)
+                            claimed = sum(
+                                1 for other in rivals
+                                if other != edge["source"]
+                                and _root_region(data["nodes"][other]["region"], regions) in placed
+                                and _box_gap(layout["nodes"][other], signpost) < parent_gap
                             )
-                            y = parent_box["y"] + (parent_box["h"] - child_box["h"]) / 2
-                        candidate = {**child_box, "x": x, "y": y}
-                        if side == "north":
-                            signpost = {"x": x + (child_box["w"] - HIERARCHY_ARROW_THICKNESS) / 2, "y": y + child_box["h"], "w": HIERARCHY_ARROW_THICKNESS, "h": EXPANSION_GAP}
-                        elif side == "south":
-                            signpost = {"x": x + (child_box["w"] - HIERARCHY_ARROW_THICKNESS) / 2, "y": y - EXPANSION_GAP, "w": HIERARCHY_ARROW_THICKNESS, "h": EXPANSION_GAP}
-                        elif side == "west":
-                            signpost = {"x": x + child_box["w"], "y": y + (child_box["h"] - HIERARCHY_ARROW_THICKNESS) / 2, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
-                        else:
-                            signpost = {"x": x - EXPANSION_GAP, "y": y + (child_box["h"] - HIERARCHY_ARROW_THICKNESS) / 2, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
-                        xs = [box["x"] for box in placed_boxes] + [candidate["x"]]
-                        ys = [box["y"] for box in placed_boxes] + [candidate["y"]]
-                        rights = [box["x"] + box["w"] for box in placed_boxes] + [candidate["x"] + candidate["w"]]
-                        bottoms = [box["y"] + box["h"] for box in placed_boxes] + [candidate["y"] + candidate["h"]]
-                        area = (max(rights) - min(xs)) * (max(bottoms) - min(ys))
-                        score = (0 if side == preferred else 1, area, side_index)
-                        signpost_choices.append((score, side, x, y, signpost))
+                            score = (crossed, claimed, round(parent_gap, 1),
+                                     0 if side == preferred else 1, side_index)
+                            signpost_choices.append((score, side, x, y, signpost))
                     _, side, x, y, corridor = min(signpost_choices, key=lambda item: item[0])
                     _move_region_tree(data, layout, child_root, x, y)
                     placed.add(child_root)

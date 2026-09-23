@@ -131,6 +131,14 @@ on the child boundary. Compile then rejects a signpost that misses the child, po
 way, or overlaps another region. The visible label must name the source anchor, and that anchor
 is the parent's first line when the parent box lists several components.
 
+When top-level regions are joined only by expansion relations, ELK's macro coordinates are not
+kept: `auto_place_expansion_regions` re-places every top-level region around its semantic
+owner, so macro ELK hints do not decide where a child lands. When no straight-corridor slot is
+free, that placer searches slots beside the owner, aligned with the owner region and with the
+semantic parent block's own row or column, beside or beyond regions already placed, and only
+last beyond everything placed. It picks the slot with the fewest regions between the parent
+block and the signpost, then the fewest nearer expandable modules, then the shortest distance.
+
 A signpost that passes those gates can still be orphaned on the page. The planner, the
 compiler pipeline, and `refresh_hierarchy_arrows.py` therefore print non-blocking
 `hierarchy attribution` warnings for every target signpost when either a region other than the

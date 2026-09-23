@@ -1445,7 +1445,10 @@ class CompilerPipelineTest(unittest.TestCase):
         edge_id, arrow = next(iter(signposts.items()))
         child = layout["regions"][arrow["child_region"]]
         detached = json.loads(json.dumps(layout))
-        detached["hierarchy_arrows"][edge_id]["x"] = child["x"] + child["w"] + 20
+        if arrow["direction"] in {"north", "south"}:
+            detached["hierarchy_arrows"][edge_id]["x"] = child["x"] + child["w"] + 20
+        else:
+            detached["hierarchy_arrows"][edge_id]["y"] = child["y"] + child["h"] + 20
         errors = validate_hierarchy_arrow_geometry(data, detached)
         self.assertTrue(any("misses the child corridor" in error for error in errors))
 
@@ -1507,6 +1510,11 @@ class CompilerPipelineTest(unittest.TestCase):
         self.assertEqual(arrow["anchor_label"], "Vision Tower")
         self.assertEqual(arrow["display_label"], "Vision Tower")
         self.assertEqual(validate_hierarchy_arrow_geometry(data, layout), [])
+
+        data["nodes"]["parent"]["label"] = "Vision Block x27"
+        data["edges"]["expand_detail"]["label"] = "Vision Block"
+        arrow = plan(data, "digest")["hierarchy_arrows"]["expand_detail"]
+        self.assertEqual(arrow["display_label"], "Vision Block x27")
 
     def test_region_boundary_expand_rejects_invalid_or_unavailable_side(self):
         data = expansion_sample()
