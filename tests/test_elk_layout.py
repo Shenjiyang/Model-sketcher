@@ -87,6 +87,18 @@ class ElkLayoutTests(unittest.TestCase):
         ordinary = ELK_ADAPTER.problem_from_region(data, "r", {n: (100,50) for n in data["nodes"]})
         self.assertAlmostEqual(ordinary["spacing"]["edge"], 22)
 
+    def test_route_node_spacing_never_falls_below_the_audit_minimum(self):
+        from clearance_contract import minimum_route_node_clearance
+        for ordinary_font, edge_font in [(18, 14), (27, 16), (36, 12), (12, 20)]:
+            with self.subTest(ordinary_font=ordinary_font, edge_font=edge_font):
+                data = {"project": {"typography": {"ordinary_node_font": ordinary_font,
+                                                   "edge_label_font": edge_font}},
+                        "regions": {"r": {}},
+                        "nodes": {n: {"region": "r", "kind": "operator"} for n in ("a", "b")},
+                        "edges": {"ab": {"source": "a", "target": "b", "kind": "tensor"}}}
+                problem = ELK_ADAPTER.problem_from_region(data, "r", {n: (100, 50) for n in data["nodes"]})
+                self.assertGreater(problem["spacing"]["edge_node"], minimum_route_node_clearance(ordinary_font))
+
     def test_edge_clearance_applies_between_layers_too(self):
         problem = json.loads(EXAMPLE.read_text())
         problem.setdefault("spacing", {})["edge"] = 30

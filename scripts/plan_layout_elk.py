@@ -19,6 +19,7 @@ from itertools import product
 from copy import deepcopy
 from pathlib import Path
 
+from clearance_contract import minimum_route_node_clearance
 from validate_architecture_ir import edge_display_label
 from visual_edge_labels import visual_edge_label
 from straight_route_refinement import refine_straight_routes
@@ -203,6 +204,7 @@ def problem_from_region(data: dict, region_id: str, sizes: dict[str, tuple[float
                 lane_candidates[node_id].append(lane_index)
     lane = {node_id: min(lane_candidates.get(node_id, [0])) for node_id in node_ids}
     edge_font = float(data.get("project", {}).get("typography", {}).get("edge_label_font", 14))
+    ordinary_font = float(data.get("project", {}).get("typography", {}).get("ordinary_node_font", 18))
     multi_write_state = any(
         data["nodes"][nid].get("kind") in {"state", "cache"}
         and sum(edge["target"] == nid for edge in edges.values()) >= 3
@@ -252,7 +254,7 @@ def problem_from_region(data: dict, region_id: str, sizes: dict[str, tuple[float
         "id": region_id,
         "direction": "UP",
         "operator_sequences": deepcopy(region.get("operator_sequences", [])),
-        "ordinary_node_font": float(data.get("project", {}).get("typography", {}).get("ordinary_node_font", 18)),
+        "ordinary_node_font": ordinary_font,
         "edge_label_font": edge_font,
         "alignment_candidates": ["LEFTUP", "RIGHTUP", "LEFTDOWN", "RIGHTDOWN", "BALANCED"],
         "placement_candidates": ["BRANDES_KOEPF", "NETWORK_SIMPLEX"] if len(node_ids) >= 24 else ["BRANDES_KOEPF"],
@@ -265,7 +267,9 @@ def problem_from_region(data: dict, region_id: str, sizes: dict[str, tuple[float
             "node": 64,
             # Center labels occupy an ELK dummy layer, so this gap occurs twice.
             "layer": max(48, edge_font * 2.4) if branched else max(36, edge_font * 1.8),
-            "edge_node": max(24, edge_font * 1.8),
+            # ELK keeps exactly this gap and conversion rounds it, so stay 1 px above the
+            # audit minimum; that minimum scales with the node font, not the label font.
+            "edge_node": max(24, edge_font * 1.8, minimum_route_node_clearance(ordinary_font) + 1.0),
             # Several state-write shelves need room for independent crossings.
             "edge": max(16, edge_font * (2.8 if multi_write_state else 1.1)),
         },
