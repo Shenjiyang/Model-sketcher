@@ -33,7 +33,7 @@ def validate_state(state: dict, architecture: dict) -> list[str]:
     allowed_fields = {
         "regions": {"x", "y", "w", "h"},
         "nodes": {"x", "y", "w", "h"},
-        "edges": {"source_port", "target_port", "waypoints"},
+        "edges": {"source_port", "target_port", "waypoints", "label_position"},
         "hierarchy_arrows": {"x", "y", "w", "h"},
     }
     known = {

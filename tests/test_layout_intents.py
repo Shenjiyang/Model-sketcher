@@ -163,6 +163,16 @@ class LayoutIntentsTests(unittest.TestCase):
         from plan_change_impact import validate_state
         self.assertTrue(validate_state({'layout_hints': {'node_order': []}}, fork()))
 
+    def test_state_preflight_accepts_every_edge_field_precision_can_apply(self):
+        from plan_change_impact import validate_state
+        edit = {'source_port': {'side': 'north', 'position': .5},
+                'target_port': {'side': 'south', 'position': .5},
+                'waypoints': [], 'label_position': {'x': 0.0, 'y': 0.0}}
+        state = {'layout_overrides': {'regions': {}, 'nodes': {}, 'edges': {'ab': edit}}}
+        self.assertEqual(validate_state(state, fork()), [])
+        state['layout_overrides']['edges']['ab']['line_jump'] = {}
+        self.assertTrue(validate_state(state, fork()))
+
     def test_inverted_ports_are_rejected_after_precision(self):
         data = fork()
         hints = {'port_order': {'a': ['source:ab', 'source:ac']}}
