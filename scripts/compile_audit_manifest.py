@@ -7,7 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
-from clearance_contract import minimum_route_node_clearance
+from clearance_contract import minimum_route_node_clearance, minimum_route_region_boundary_clearance
 from compile_drawio import (
     edge_label_coordinates,
     line_jump_contracts,
@@ -305,7 +305,7 @@ def build_manifest(data: dict, layout: dict | None = None) -> dict:
             "node_gutter_exclusions": {},
             "minimum_route_node_clearance": minimum_route_node_clearance(ordinary_font),
             "route_node_clearance_exclusions": {},
-            "minimum_route_region_boundary_clearance": round(max(24.0, ordinary_font * 2.0), 2),
+            "minimum_route_region_boundary_clearance": minimum_route_region_boundary_clearance(ordinary_font),
             "route_region_clearance_exclusions": {},
             "require_compact_execution_geometry": True,
             # Top includes the generated title header; the other sides contain padding only.

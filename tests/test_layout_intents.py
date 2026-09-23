@@ -114,6 +114,31 @@ class LayoutIntentsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_hints(joined, {'macro': {'composition': 'nested'}})
 
+    def test_compound_bridges_an_isolated_crossing_but_not_one_under_a_moved_label(self):
+        from compound_layout import plan_compound_line_jumps
+        data = {'edges': {'h': {'source': 'w', 'target': 'e', 'kind': 'tensor'},
+                          'v': {'source': 's', 'target': 'n', 'kind': 'tensor'}}}
+        nodes = {'w': {'x': 0, 'y': 180, 'w': 40, 'h': 40}, 'e': {'x': 360, 'y': 180, 'w': 40, 'h': 40},
+                 's': {'x': 180, 'y': 360, 'w': 40, 'h': 40}, 'n': {'x': 180, 'y': 0, 'w': 40, 'h': 40}}
+        def layout():
+            return {'nodes': deepcopy(nodes), 'layout_engine': {}, 'edges': {
+                'h': {'source_port': {'side': 'east', 'position': .5},
+                      'target_port': {'side': 'west', 'position': .5}, 'waypoints': []},
+                'v': {'source_port': {'side': 'north', 'position': .5},
+                      'target_port': {'side': 'south', 'position': .5}, 'waypoints': []}}}
+        clear = layout()
+        plan_compound_line_jumps(data, clear, deepcopy(nodes), {})
+        self.assertEqual(clear['edges']['v']['line_jump']['crossings'], {'h': clear['edges']['v']['line_jump']['crossings']['h']})
+        self.assertEqual(len(clear['layout_engine']['isolated_line_jumps']['planned']), 1)
+
+        # ELK put h's label far away; the region then moved it onto the crossing.
+        shifted = layout()
+        elk_nodes = deepcopy(nodes)
+        elk_nodes['w'] = {**nodes['w'], 'x': nodes['w']['x'] - 500}
+        plan_compound_line_jumps(data, shifted, elk_nodes, {'h': {'x': -310, 'y': 190, 'w': 40, 'h': 20}})
+        self.assertNotIn('line_jump', shifted['edges']['v'])
+        self.assertNotIn('isolated_line_jumps', shifted['layout_engine'])
+
     def test_changed_hints_cannot_silently_reuse_layout(self):
         from test_precision_layout import fixture
         data, base = fixture()

@@ -4,10 +4,12 @@ import json
 import math
 import subprocess
 import tempfile
+from collections import defaultdict
 from copy import deepcopy
 from pathlib import Path
 
-from plan_layout_elk import elk_graph, problem_from_region, convert_result
+from clearance_contract import minimum_route_region_boundary_clearance
+from plan_layout_elk import elk_graph, problem_from_region, convert_result, _port_point as port_point
 from layout_progress import phase, progress
 from layout_intents import (validate_hints, apply_problem_hints, apply_macro_hints,
                             apply_region_hints, verify_ports)
@@ -252,8 +254,20 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
     with phase('route conversion and label geometry'):
         result = convert_result(problem, flattened)
     # ELK may reserve external label shelves inside a compound's side envelope.
-    # Tighten visible borders, not nodes/routes; routing is not execution content.
+    # Tighten visible borders to the nodes, but keep the region's own vertical route
+    # segments at least the audited boundary clearance inside, plus rounding slack.
     padding = max(42.0, float(font) * 2)
+    route_margin = minimum_route_region_boundary_clearance(font) + 1.0
+    route_xs = defaultdict(list)
+    for eid, route in result['edges'].items():
+        edge = data['edges'][eid]
+        rid = data['nodes'][edge['source']]['region']
+        if data['nodes'][edge['target']]['region'] != rid:
+            continue
+        points = [port_point(result['nodes'][edge['source']], route['source_port']),
+                  *map(tuple, route['waypoints']),
+                  port_point(result['nodes'][edge['target']], route['target_port'])]
+        route_xs[rid].extend(a[0] for a, b in zip(points, points[1:]) if abs(a[0] - b[0]) < 0.5)
     def tighten(rid):
         children = [child for child, region in data['regions'].items() if region.get('parent') == rid]
         for child in children:
@@ -263,6 +277,9 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
         if content:
             left = min(box['x'] for box in content) - padding
             right = max(box['x'] + box['w'] for box in content) + padding
+            if route_xs[rid]:
+                left = min(left, min(route_xs[rid]) - route_margin)
+                right = max(right, max(route_xs[rid]) + route_margin)
             regions[rid]['x'], regions[rid]['w'] = left, right - left
     for rid, region in data['regions'].items():
         if region.get('parent') is None:
@@ -273,6 +290,8 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
     ordinary = {eid for eid, edge in data.get('edges', {}).items() if edge.get('kind') != 'expand'}
     if set(result['edges']) != ordinary or set(result['nodes']) != set(data['nodes']):
         raise ValueError('compound ELK dropped or added semantic nodes/edges')
+    elk_nodes = deepcopy(result['nodes'])
+    elk_label_boxes = deepcopy(result.get('edge_label_boxes', {}))
     layout = {
         'schema_version': 3, 'architecture_sha256': architecture_sha256,
         'regions': regions, 'nodes': result['nodes'], 'edges': result['edges'],
@@ -306,5 +325,29 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
             layout['hierarchy_arrows'] = plan_hierarchy_arrows(data, layout)
             apply_hierarchy_arrow_overrides(layout, state)
     layout = normalize_junctions(data, layout)
+    with phase('isolated line jumps'):
+        plan_compound_line_jumps(data, layout, elk_nodes, elk_label_boxes)
     verify_ports(data, layout, hints)
     return layout
+
+
+def plan_compound_line_jumps(data, layout, elk_nodes, elk_label_boxes):
+    """Bridge sparse unavoidable perpendicular crossings on the final routes.
+
+    Label boxes come from ELK before regions were moved; every ordinary edge stays
+    inside one region, so each label moves with its source node.
+    """
+    from isolated_line_jumps import plan_isolated_line_jumps
+    labels = {}
+    for eid, box in elk_label_boxes.items():
+        source = data['edges'][eid]['source']
+        dx = layout['nodes'][source]['x'] - elk_nodes[source]['x']
+        dy = layout['nodes'][source]['y'] - elk_nodes[source]['y']
+        labels[eid] = {**box, 'x': box['x'] + dx, 'y': box['y'] + dy}
+    problem = {'edges': {eid: {'source': edge['source'], 'target': edge['target']}
+                         for eid, edge in data['edges'].items() if eid in layout['edges']}}
+    view = {'nodes': layout['nodes'], 'edges': layout['edges'], 'edge_label_boxes': labels}
+    plan_isolated_line_jumps(problem, view)
+    summary = view.get('engine', {}).get('isolated_line_jumps')
+    if summary and summary['planned']:
+        layout['layout_engine']['isolated_line_jumps'] = summary
