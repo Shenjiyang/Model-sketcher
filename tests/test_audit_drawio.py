@@ -367,7 +367,7 @@ class HierarchyArrowTests(unittest.TestCase):
 
 
 class FanoutSideTests(unittest.TestCase):
-    def audit_sides(self, exits: list[tuple[float, float]]) -> list[str]:
+    def audit_sides(self, exits: list[tuple[float, float]], storage: set[int] = frozenset()) -> list[str]:
         root = ET.Element("root")
         ET.SubElement(root, "mxCell", {"id": "0"})
         ET.SubElement(root, "mxCell", {"id": "1", "parent": "0"})
@@ -382,7 +382,9 @@ class FanoutSideTests(unittest.TestCase):
                 "style": f"exitX={exit_x};exitY={exit_y};entryX=0.5;entryY=1;",
             })
             ET.SubElement(edge, "mxGeometry", {"relative": "1", "as": "geometry"})
-        audit = AUDIT.PageAudit("test", ET.Element("mxGraphModel"), {})
+        config = {"semantic_style_contract": {"nodes": {
+            f"target-{index}": {"glyph": "storage"} for index in storage}}}
+        audit = AUDIT.PageAudit("test", ET.Element("mxGraphModel"), config)
         audit.model.append(root)
         audit.cells = list(audit.model.iter("mxCell"))
         audit.prepare()
@@ -392,6 +394,11 @@ class FanoutSideTests(unittest.TestCase):
     def test_mixed_source_sides_are_rejected(self) -> None:
         errors = self.audit_sides([(0, 0.5), (0.5, 0), (1, 0.5)])
         self.assertTrue(any("mixed sides" in error for error in errors))
+
+    def test_side_write_into_cache_does_not_count_as_a_mixed_fanout(self) -> None:
+        self.assertEqual(self.audit_sides([(0.3, 0), (0.7, 0), (1, 0.5)], storage={2}), [])
+        mixed = self.audit_sides([(0.3, 0), (0, 0.5), (0.7, 0), (1, 0.5)], storage={3})
+        self.assertTrue(any("mixed sides" in error for error in mixed))
 
     def test_distinct_ports_on_one_side_are_accepted(self) -> None:
         self.assertEqual(self.audit_sides([(0.2, 0), (0.5, 0), (0.8, 0)]), [])

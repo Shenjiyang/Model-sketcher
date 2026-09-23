@@ -1595,6 +1595,23 @@ class CompilerPipelineTest(unittest.TestCase):
         self.assertEqual(arrow["anchor_label"], "Parent definition")
         self.assertEqual(validate_hierarchy_arrow_geometry(data, layout | {"hierarchy_arrows": {"expand_detail": arrow}}), [])
 
+    def test_signpost_slides_off_another_arrow_into_a_shared_child(self):
+        from plan_layout import _separate_signposts
+        regions = {"child": {"x": 200, "y": 0, "w": 300, "h": 600},
+                   "owner": {"x": 0, "y": 200, "w": 80, "h": 200}}
+        direct = {"x": 80, "y": 252, "w": 120, "h": 96, "direction": "east",
+                  "attachment_mode": "owner-region-boundary", "child_region": "child"}
+        signpost = {"x": 80, "y": 270, "w": 120, "h": 96, "direction": "east",
+                    "attachment_mode": "target-signpost", "child_region": "child"}
+        arrows = {"a_direct": direct, "b_signpost": signpost}
+        _separate_signposts(arrows, regions)
+        self.assertEqual(arrows["a_direct"]["y"], 252)
+        moved = arrows["b_signpost"]
+        self.assertFalse(moved["y"] + moved["h"] + 8 > direct["y"] and direct["y"] + direct["h"] + 8 > moved["y"])
+        self.assertGreaterEqual(moved["y"], regions["child"]["y"])
+        self.assertLessEqual(moved["y"] + moved["h"], regions["child"]["y"] + regions["child"]["h"])
+        self.assertEqual(moved["x"], 80)
+
     def test_signpost_attribution_reports_intervening_regions_and_nearer_modules(self):
         data = expansion_sample()
         signpost = {

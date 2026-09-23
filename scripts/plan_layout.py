@@ -631,7 +631,43 @@ def plan_hierarchy_arrows(data: dict, layout: dict) -> dict:
             **({"anchor_label": attachment["anchor_label"]} if attachment.get("anchor_label") else {}),
             **({"display_label": attachment["display_label"]} if attachment.get("display_label") else {}),
         }
+    _separate_signposts(arrows, region_boxes)
     return arrows
+
+
+def _separate_signposts(arrows: dict, region_boxes: dict) -> None:
+    """Slide a signpost along its child edge off any other hierarchy arrow.
+
+    Direct arrows are fixed by their corridor, but a signpost only has to touch
+    its child, so it can move along that edge. A child shared by two parents is
+    where a signpost otherwise lands on the other parent's arrow.
+    """
+    gap = 8.0
+    for edge_id in sorted(arrows):
+        arrow = arrows[edge_id]
+        if arrow.get("attachment_mode") != "target-signpost":
+            continue
+        others = [box for other_id, box in arrows.items() if other_id != edge_id]
+        if not any(_boxes_collide(arrow, box, gap) for box in others):
+            continue
+        child = region_boxes[arrow["child_region"]]
+        along = "x" if arrow["direction"] in {"north", "south"} else "y"
+        span = "w" if along == "x" else "h"
+        low, high = child[along], child[along] + child[span] - arrow[span]
+        if high < low:
+            continue
+        steps = max(1, int((high - low) // 12))
+        positions = sorted((low + (high - low) * index / steps for index in range(steps + 1)),
+                           key=lambda value: abs(value - arrow[along]))
+        for value in positions:
+            candidate = {**arrow, along: round(value, 2)}
+            if any(_boxes_collide(candidate, box, gap) for box in others):
+                continue
+            if any(region_id != arrow["child_region"] and _boxes_collide(candidate, box, 0.0)
+                   for region_id, box in region_boxes.items()):
+                continue
+            arrow[along] = candidate[along]
+            break
 
 
 def _center(box: dict) -> tuple[float, float]:

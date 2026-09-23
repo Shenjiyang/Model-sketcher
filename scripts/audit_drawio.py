@@ -751,10 +751,16 @@ class PageAudit:
 
         exclusions = set(self.config.get("fanout_shape_exclusions", []))
         side_exclusions = set(self.config.get("fanout_side_exclusions", []))
+        glyphs = self.config.get("semantic_style_contract", {}).get("nodes", {})
+        # Cache and state are drawn beside the flow on purpose, so a write into
+        # them leaves from the side without making the block read as a pass-through.
+        storage = {cell_id for cell_id, item in glyphs.items()
+                   if isinstance(item, dict) and item.get("glyph") == "storage"}
         for source_id, edges in outgoing.items():
-            if len(edges) >= 3 and source_id not in side_exclusions:
+            flow_edges = [edge for edge in edges if edge.get("target", "") not in storage]
+            if len(flow_edges) >= 3 and source_id not in side_exclusions:
                 sides: set[str] = set()
-                for edge in edges:
+                for edge in flow_edges:
                     style = self.styles.get(edge.get("id", ""), {})
                     exit_x = number(style.get("exitX"), 0.5)
                     exit_y = number(style.get("exitY"), 0.5)
