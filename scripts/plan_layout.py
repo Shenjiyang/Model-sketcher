@@ -584,6 +584,94 @@ def plan_hierarchy_arrows(data: dict, layout: dict) -> dict:
     return arrows
 
 
+def _center(box: dict) -> tuple[float, float]:
+    return box["x"] + box["w"] / 2, box["y"] + box["h"] / 2
+
+
+def _contains(outer: dict, inner: dict) -> bool:
+    return (outer["x"] - 1 <= inner["x"] and outer["y"] - 1 <= inner["y"]
+            and inner["x"] + inner["w"] <= outer["x"] + outer["w"] + 1
+            and inner["y"] + inner["h"] <= outer["y"] + outer["h"] + 1)
+
+
+def _segment_box_length(start: tuple[float, float], end: tuple[float, float], box: dict) -> float:
+    """Length of the straight segment that lies inside an axis-aligned box."""
+    (x0, y0), (x1, y1) = start, end
+    dx, dy = x1 - x0, y1 - y0
+    low, high = 0.0, 1.0
+    for delta, origin, minimum, maximum in (
+        (dx, x0, box["x"], box["x"] + box["w"]),
+        (dy, y0, box["y"], box["y"] + box["h"]),
+    ):
+        if abs(delta) < 1e-9:
+            if origin < minimum or origin > maximum:
+                return 0.0
+            continue
+        first, last = (minimum - origin) / delta, (maximum - origin) / delta
+        if first > last:
+            first, last = last, first
+        low, high = max(low, first), min(high, last)
+        if low >= high:
+            return 0.0
+    return (high - low) * math.hypot(dx, dy)
+
+
+def _box_gap(first: dict, second: dict) -> float:
+    gap_x = max(0.0, max(first["x"], second["x"]) - min(first["x"] + first["w"], second["x"] + second["w"]))
+    gap_y = max(0.0, max(first["y"], second["y"]) - min(first["y"] + first["h"], second["y"] + second["h"]))
+    return math.hypot(gap_x, gap_y)
+
+
+def hierarchy_attribution_findings(data: dict, layout: dict) -> list[str]:
+    """Report target signposts a reader would not trace back to their parent.
+
+    A signpost is legal without touching its parent, so compile and audit pass
+    it. These findings catch the two ways it still reads as orphaned: other
+    regions sit between the parent and the signpost, or another expandable
+    module is nearer to the signpost than the registered parent.
+    """
+    findings: list[str] = []
+    nodes, regions = layout.get("nodes", {}), layout.get("regions", {})
+    expandable = {
+        edge["source"] for edge in data.get("edges", {}).values() if edge.get("kind") == "expand"
+    }
+    for edge_id, arrow in sorted(layout.get("hierarchy_arrows", {}).items()):
+        if arrow.get("attachment_mode") != "target-signpost":
+            continue
+        parent_id = arrow.get("parent")
+        parent = nodes.get(parent_id)
+        if parent is None:
+            continue
+        child_id = arrow.get("child_region")
+        name = arrow.get("anchor_label") or parent_id
+        start, end = _center(parent), _center(arrow)
+        crossed = sorted(
+            region_id for region_id, box in regions.items()
+            if region_id != child_id
+            and not _contains(box, parent) and not _contains(box, arrow)
+            and _segment_box_length(start, end, box) > 1.0
+        )
+        if crossed:
+            findings.append(
+                f"{edge_id}: signpost {name!r} is separated from its parent by regions {crossed}; "
+                "move the child region beside the parent"
+            )
+        parent_gap = _box_gap(parent, arrow)
+        nearer = sorted(
+            (round(_box_gap(nodes[other], arrow), 1), other)
+            for other in expandable
+            if other != parent_id and other in nodes and _box_gap(nodes[other], arrow) < parent_gap
+        )
+        if nearer:
+            gap, other = nearer[0]
+            other_name = semantic_anchor_label(data["nodes"].get(other, {}), other)
+            findings.append(
+                f"{edge_id}: signpost {name!r} is nearer to expandable module {other_name!r} "
+                f"({gap:g}px) than to its parent ({round(parent_gap, 1):g}px)"
+            )
+    return findings
+
+
 def apply_hierarchy_arrow_overrides(layout: dict, state: dict | None) -> None:
     """Apply project-owned corridor adjustments after automatic arrow derivation."""
     if not state:
@@ -663,6 +751,8 @@ def main() -> int:
         f"layout: GENERATED; strict/visual audits pending ({len(output['nodes'])} nodes, {len(output['edges'])} edges, "
         f"{len(output['hierarchy_arrows'])} hierarchy arrows)"
     )
+    for finding in hierarchy_attribution_findings(data, output):
+        print(f"WARNING: hierarchy attribution: {finding}")
     return 0
 
 

@@ -8,7 +8,11 @@ import json
 from pathlib import Path
 
 from plan_change_impact import validate_state
-from plan_layout import apply_hierarchy_arrow_overrides, plan_hierarchy_arrows
+from plan_layout import (
+    apply_hierarchy_arrow_overrides,
+    hierarchy_attribution_findings,
+    plan_hierarchy_arrows,
+)
 from validate_architecture_ir import load, validate
 
 
@@ -43,6 +47,8 @@ def main() -> int:
         return 1
     args.layout.write_text(json.dumps(layout, indent=2) + "\n", encoding="utf-8")
     print(f"hierarchy arrows: PASS ({len(layout['hierarchy_arrows'])} arrows)")
+    for finding in hierarchy_attribution_findings(data, layout):
+        print(f"WARNING: hierarchy attribution: {finding}")
     return 0
 
 

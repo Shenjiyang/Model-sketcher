@@ -12,7 +12,7 @@ from pathlib import Path
 
 from compile_audit_manifest import build_manifest
 from compile_drawio import compile_diagram
-from plan_layout import digest, plan
+from plan_layout import digest, hierarchy_attribution_findings, plan
 from plan_change_impact import analyze, validate_state
 from render_topology_contract import render as render_topology
 from semantic_gate import validate_semantic_gate
@@ -174,6 +174,8 @@ def main() -> int:
     write_json(args.layout, layout)
     update_state(args.state, "compile", "deterministic-layout")
     print(f"gate 4: GENERATED (geometry only; audit pending; {time.monotonic() - layout_started:.3f}s)")
+    for finding in hierarchy_attribution_findings(data, layout):
+        print(f"WARNING: hierarchy attribution: {finding}")
 
     args.drawio.parent.mkdir(parents=True, exist_ok=True)
     try:

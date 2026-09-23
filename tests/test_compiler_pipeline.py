@@ -18,7 +18,12 @@ from compile_drawio import (
     validate_hierarchy_arrow_geometry,
 )
 from compile_audit_manifest import build_manifest
-from plan_layout import apply_hierarchy_arrow_overrides, plan, plan_hierarchy_arrows
+from plan_layout import (
+    apply_hierarchy_arrow_overrides,
+    hierarchy_attribution_findings,
+    plan,
+    plan_hierarchy_arrows,
+)
 from plan_change_impact import analyze, validate_state
 from render_topology_contract import render
 from validate_architecture_ir import validate, validate_detail_runtime_state_contracts
@@ -1581,6 +1586,37 @@ class CompilerPipelineTest(unittest.TestCase):
         self.assertEqual(arrow["child_region"], "detail")
         self.assertEqual(arrow["anchor_label"], "Parent definition")
         self.assertEqual(validate_hierarchy_arrow_geometry(data, layout | {"hierarchy_arrows": {"expand_detail": arrow}}), [])
+
+    def test_signpost_attribution_reports_intervening_regions_and_nearer_modules(self):
+        data = expansion_sample()
+        signpost = {
+            "x": 2, "y": 200, "w": 96, "h": 120, "direction": "north",
+            "parent": "parent", "attachment_mode": "target-signpost", "attachment_id": "parent",
+            "child_region": "detail", "anchor_label": "Parent definition",
+            "display_label": "Parent definition",
+        }
+        layout = {
+            "nodes": {"parent": {"x": 20, "y": 820, "w": 60, "h": 60}},
+            "regions": {
+                "parent": {"x": 0, "y": 800, "w": 100, "h": 100},
+                "detail": {"x": 0, "y": 0, "w": 100, "h": 200},
+            },
+            "hierarchy_arrows": {"expand_detail": signpost},
+        }
+        self.assertEqual(hierarchy_attribution_findings(data, layout), [])
+
+        layout["regions"]["blocker"] = {"x": 0, "y": 450, "w": 100, "h": 200}
+        findings = hierarchy_attribution_findings(data, layout)
+        self.assertTrue(any("separated from its parent by regions ['blocker']" in item for item in findings))
+
+        data["nodes"]["other"] = {"label": "Other module\nPart", "kind": "module", "region": "blocker"}
+        data["edges"]["expand_other"] = {"source": "other", "target": "input", "kind": "expand"}
+        layout["nodes"]["other"] = {"x": 20, "y": 360, "w": 60, "h": 40}
+        findings = hierarchy_attribution_findings(data, layout)
+        self.assertTrue(any("nearer to expandable module 'Other module'" in item for item in findings))
+
+        layout["hierarchy_arrows"]["expand_detail"]["attachment_mode"] = "owner-region-boundary"
+        self.assertEqual(hierarchy_attribution_findings(data, layout), [])
 
     def test_hierarchy_arrows_are_recomputed_after_final_layout_movement(self):
         data = expansion_sample()

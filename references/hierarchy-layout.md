@@ -131,6 +131,14 @@ on the child boundary. Compile then rejects a signpost that misses the child, po
 way, or overlaps another region. The visible label must name the source anchor, and that anchor
 is the parent's first line when the parent box lists several components.
 
+A signpost that passes those gates can still be orphaned on the page. The planner, the
+compiler pipeline, and `refresh_hierarchy_arrows.py` therefore print non-blocking
+`hierarchy attribution` warnings for every target signpost when either a region other than the
+parent's own and the child lies on the straight line from the parent block to the signpost, or
+another expandable module sits closer to the signpost than its registered parent. Treat each
+warning as a macro-placement defect: move the child region beside its parent through
+`project-state.json.layout_overrides.regions`, then rerun. Do not silence it by relabeling.
+
 ## 5. Geometry gate
 
 Before export, validate every registry entry:
