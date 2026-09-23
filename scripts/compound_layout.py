@@ -290,7 +290,6 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
     ordinary = {eid for eid, edge in data.get('edges', {}).items() if edge.get('kind') != 'expand'}
     if set(result['edges']) != ordinary or set(result['nodes']) != set(data['nodes']):
         raise ValueError('compound ELK dropped or added semantic nodes/edges')
-    elk_nodes = deepcopy(result['nodes'])
     elk_label_boxes = deepcopy(result.get('edge_label_boxes', {}))
     layout = {
         'schema_version': 3, 'architecture_sha256': architecture_sha256,
@@ -326,28 +325,89 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
             apply_hierarchy_arrow_overrides(layout, state)
     layout = normalize_junctions(data, layout)
     with phase('isolated line jumps'):
-        plan_compound_line_jumps(data, layout, elk_nodes, elk_label_boxes)
+        plan_compound_line_jumps(data, layout, elk_label_boxes)
     verify_ports(data, layout, hints)
     return layout
 
 
-def plan_compound_line_jumps(data, layout, elk_nodes, elk_label_boxes):
+LINE_JUMP_SIZE = 12.0
+
+
+def _route_points(data, layout, eid):
+    edge, route = data['edges'][eid], layout['edges'][eid]
+    return [port_point(layout['nodes'][edge['source']], route['source_port']),
+            *map(tuple, route['waypoints']),
+            port_point(layout['nodes'][edge['target']], route['target_port'])]
+
+
+def label_box_at(points, position, w, h):
+    """Place a label of size w x h where Draw.io draws label_position on this route."""
+    lengths = [math.dist(a, b) for a, b in zip(points, points[1:])]
+    along = (float(position['x']) + 1.0) / 2.0 * sum(lengths)
+    for (a, b), length in zip(zip(points, points[1:]), lengths):
+        if length > 0 and along <= length + 1e-9:
+            t = along / length
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            nx, ny = dy / length, -dx / length
+            cx = a[0] + t * dx + float(position['y']) * nx
+            cy = a[1] + t * dy + float(position['y']) * ny
+            return {'x': cx - w / 2, 'y': cy - h / 2, 'w': w, 'h': h}
+        along -= length
+    a = points[-1]
+    return {'x': a[0] - w / 2, 'y': a[1] - h / 2, 'w': w, 'h': h}
+
+
+def plan_compound_line_jumps(data, layout, elk_label_boxes):
     """Bridge sparse unavoidable perpendicular crossings on the final routes.
 
-    Label boxes come from ELK before regions were moved; every ordinary edge stays
-    inside one region, so each label moves with its source node.
+    A crossing that is blocked only because a label sits next to it gets that
+    label moved along its own route, with every bridgeable crossing kept clear,
+    before the bridges are planned.
     """
     from isolated_line_jumps import plan_isolated_line_jumps
-    labels = {}
-    for eid, box in elk_label_boxes.items():
-        source = data['edges'][eid]['source']
-        dx = layout['nodes'][source]['x'] - elk_nodes[source]['x']
-        dy = layout['nodes'][source]['y'] - elk_nodes[source]['y']
-        labels[eid] = {**box, 'x': box['x'] + dx, 'y': box['y'] + dy}
+    from plan_layout_elk import _label_position
     problem = {'edges': {eid: {'source': edge['source'], 'target': edge['target']}
                          for eid, edge in data['edges'].items() if eid in layout['edges']}}
-    view = {'nodes': layout['nodes'], 'edges': layout['edges'], 'edge_label_boxes': labels}
-    plan_isolated_line_jumps(problem, view)
+    points = {eid: _route_points(data, layout, eid) for eid in layout['edges']}
+    sizes = {eid: (box['w'], box['h']) for eid, box in elk_label_boxes.items()}
+
+    def labels():
+        return {eid: label_box_at(points[eid], layout['edges'][eid]['label_position'], *sizes[eid])
+                for eid in sizes if 'label_position' in layout['edges'][eid]}
+
+    def planned(boxes):
+        view = {'nodes': layout['nodes'], 'edges': deepcopy(layout['edges']), 'edge_label_boxes': boxes}
+        plan_isolated_line_jumps(problem, view, LINE_JUMP_SIZE)
+        return view['engine']['isolated_line_jumps']['planned']
+
+    current = labels()
+    free = planned({})
+    blocked = [item for item in free if item not in planned(current)]
+    radius = 1.25 * LINE_JUMP_SIZE
+    keep_out = [{'x': x - radius, 'y': y - radius, 'w': 2 * radius, 'h': 2 * radius}
+                for x, y in (item['point'] for item in free)]
+    edge_font = float(data.get('project', {}).get('typography', {}).get('edge_label_font', 14))
+    for item in blocked:
+        x, y = item['point']
+        for eid, box in list(current.items()):
+            if not (box['x'] - radius <= x <= box['x'] + box['w'] + radius
+                    and box['y'] - radius <= y <= box['y'] + box['h'] + radius):
+                continue
+            w, h = sizes[eid]
+            others = [b for other, b in current.items() if other != eid]
+            try:
+                position, _ = _label_position(
+                    eid, points[eid], {'x': box['x'], 'y': box['y'], 'width': w, 'height': h}, 0.0,
+                    [*layout['nodes'].values(), *others, *keep_out],
+                    [route for other, route in points.items() if other != eid],
+                    minimum_flank=max(12.0, 1.1 * edge_font),
+                )
+            except ValueError:
+                continue
+            layout['edges'][eid]['label_position'] = position
+            current[eid] = label_box_at(points[eid], position, w, h)
+    view = {'nodes': layout['nodes'], 'edges': layout['edges'], 'edge_label_boxes': current}
+    plan_isolated_line_jumps(problem, view, LINE_JUMP_SIZE)
     summary = view.get('engine', {}).get('isolated_line_jumps')
     if summary and summary['planned']:
         layout['layout_engine']['isolated_line_jumps'] = summary

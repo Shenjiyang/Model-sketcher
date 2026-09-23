@@ -114,30 +114,31 @@ class LayoutIntentsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_hints(joined, {'macro': {'composition': 'nested'}})
 
-    def test_compound_bridges_an_isolated_crossing_but_not_one_under_a_moved_label(self):
-        from compound_layout import plan_compound_line_jumps
+    def test_compound_moves_a_label_off_a_crossing_before_bridging_it(self):
+        from compound_layout import label_box_at, plan_compound_line_jumps, _route_points
         data = {'edges': {'h': {'source': 'w', 'target': 'e', 'kind': 'tensor'},
                           'v': {'source': 's', 'target': 'n', 'kind': 'tensor'}}}
-        nodes = {'w': {'x': 0, 'y': 180, 'w': 40, 'h': 40}, 'e': {'x': 360, 'y': 180, 'w': 40, 'h': 40},
-                 's': {'x': 180, 'y': 360, 'w': 40, 'h': 40}, 'n': {'x': 180, 'y': 0, 'w': 40, 'h': 40}}
-        def layout():
-            return {'nodes': deepcopy(nodes), 'layout_engine': {}, 'edges': {
+        nodes = {'w': {'x': 0, 'y': 180, 'w': 40, 'h': 40}, 'e': {'x': 560, 'y': 180, 'w': 40, 'h': 40},
+                 's': {'x': 280, 'y': 460, 'w': 40, 'h': 40}, 'n': {'x': 280, 'y': 0, 'w': 40, 'h': 40}}
+        def layout(label=None):
+            edges = {
                 'h': {'source_port': {'side': 'east', 'position': .5},
                       'target_port': {'side': 'west', 'position': .5}, 'waypoints': []},
                 'v': {'source_port': {'side': 'north', 'position': .5},
-                      'target_port': {'side': 'south', 'position': .5}, 'waypoints': []}}}
+                      'target_port': {'side': 'south', 'position': .5}, 'waypoints': []}}
+            if label:
+                edges['h']['label_position'] = label
+            return {'nodes': deepcopy(nodes), 'layout_engine': {}, 'edges': edges}
         clear = layout()
-        plan_compound_line_jumps(data, clear, deepcopy(nodes), {})
-        self.assertEqual(clear['edges']['v']['line_jump']['crossings'], {'h': clear['edges']['v']['line_jump']['crossings']['h']})
-        self.assertEqual(len(clear['layout_engine']['isolated_line_jumps']['planned']), 1)
+        plan_compound_line_jumps(data, clear, {})
+        self.assertIn('h', clear['edges']['v']['line_jump']['crossings'])
 
-        # ELK put h's label far away; the region then moved it onto the crossing.
-        shifted = layout()
-        elk_nodes = deepcopy(nodes)
-        elk_nodes['w'] = {**nodes['w'], 'x': nodes['w']['x'] - 500}
-        plan_compound_line_jumps(data, shifted, elk_nodes, {'h': {'x': -310, 'y': 190, 'w': 40, 'h': 20}})
-        self.assertNotIn('line_jump', shifted['edges']['v'])
-        self.assertNotIn('isolated_line_jumps', shifted['layout_engine'])
+        # h's label is centred on the crossing, which alone would block the bridge.
+        crowded = layout({'x': 0.0, 'y': 0.0})
+        plan_compound_line_jumps(data, crowded, {'h': {'x': 0, 'y': 0, 'w': 60, 'h': 20}})
+        self.assertIn('h', crowded['edges']['v']['line_jump']['crossings'])
+        moved = label_box_at(_route_points(data, crowded, 'h'), crowded['edges']['h']['label_position'], 60, 20)
+        self.assertTrue(moved['x'] > 300 + 15 or moved['x'] + moved['w'] < 300 - 15)
 
     def test_changed_hints_cannot_silently_reuse_layout(self):
         from test_precision_layout import fixture
