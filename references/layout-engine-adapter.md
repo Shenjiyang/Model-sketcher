@@ -158,7 +158,15 @@ The supported hints are:
   attribution warnings instead of 3. ELK aligns each layer of large region
   boxes as a column and does not keep a child overlapping its own parent, so no
   straight corridor survives. Keep `joint` for hierarchy masters unless a
-  measured comparison says otherwise.
+  measured comparison says otherwise. A further trial laid out the macro graph
+  from the finished interiors with each expansion port fixed at the parent
+  block's row (or column) and the child's entry block, with high straightness
+  priority. It was the best ELK-led variant (rightward, Brandes-Koepf, 240 px
+  layer gap: 8 direct arrows and 5 signposts, 6 attribution warnings with 2
+  separated, about 1.6x the area) but still worse than the joint graph plus the
+  post-ELK expansion placer (9 direct, 4 signposts, 3 warnings, none
+  separated). Each owner's several children still share one layer column, so
+  ELK aligns at most one of them to its parent row.
 - `region_order`: every visible region once; an input-order preference.
 - `regions.<id>.node_order`: every direct visible node in that region once;
   activates ELK model-order preference. Use it to suggest parallel branch order,
