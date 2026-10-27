@@ -11,6 +11,7 @@ from plan_change_impact import validate_state
 from plan_layout import (
     apply_hierarchy_arrow_overrides,
     hierarchy_attribution_findings,
+    hierarchy_corridor_findings,
     plan_hierarchy_arrows,
 )
 from validate_architecture_ir import load, validate
@@ -49,6 +50,8 @@ def main() -> int:
     print(f"hierarchy arrows: PASS ({len(layout['hierarchy_arrows'])} arrows)")
     for finding in hierarchy_attribution_findings(data, layout):
         print(f"WARNING: hierarchy attribution: {finding}")
+    for finding in hierarchy_corridor_findings(data, layout):
+        print(f"WARNING: hierarchy corridor: {finding}")
     return 0
 
 

@@ -20,6 +20,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from clearance_contract import minimum_route_node_clearance
+from typography import resolve_typography
 from validate_architecture_ir import edge_display_label
 from visual_edge_labels import visual_edge_label
 from straight_route_refinement import refine_straight_routes
@@ -203,8 +204,9 @@ def problem_from_region(data: dict, region_id: str, sizes: dict[str, tuple[float
             if node_id in node_set:
                 lane_candidates[node_id].append(lane_index)
     lane = {node_id: min(lane_candidates.get(node_id, [0])) for node_id in node_ids}
-    edge_font = float(data.get("project", {}).get("typography", {}).get("edge_label_font", 14))
-    ordinary_font = float(data.get("project", {}).get("typography", {}).get("ordinary_node_font", 18))
+    typography = resolve_typography(data.get("project", {}).get("typography"))
+    edge_font = float(typography["edge_label_font"])
+    ordinary_font = float(typography["ordinary_node_font"])
     multi_write_state = any(
         data["nodes"][nid].get("kind") in {"state", "cache"}
         and sum(edge["target"] == nid for edge in edges.values()) >= 3

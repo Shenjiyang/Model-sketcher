@@ -38,6 +38,50 @@ When the primary viewing scale is known, make it machine-checkable:
 
 The static auditor computes `ordinary_node_font × primary_view_scale`. Falling below the declared minimum is a blocking failure; falling between the minimum and target is a visual-review warning. It also warns when the declared font-role palette drifts outside the recommended ratios below. Do not guess the scale from raw canvas width; declare the scale of the actual primary reading frame.
 
+## Declare the calibration in the IR
+
+Record the selected calibration in `project.typography` so the compiler, planner, and auditor all resolve the same numbers. Two equivalent forms are accepted; do not mix keys from both in one project:
+
+```json
+"typography": {
+  "viewing_profile": "desktop-review",
+  "ordinary_node_font": 18,
+  "edge_label_font": 14,
+  "annotation_font": 14,
+  "region_title_font": 20,
+  "hierarchy_label_font": 20,
+  "primary_view_scale": 0.67,
+  "minimum_apparent_ordinary_font": 16,
+  "target_apparent_ordinary_font": 18
+}
+```
+
+or the ratio form, which derives every role from one native base using the recommended bands above (undeclared roles keep the reference ratio of the absolute form):
+
+```json
+"typography": {
+  "viewing_profile": "desktop-review",
+  "native_base_size": 18,
+  "role_ratios": {
+    "node_label": 1.0,
+    "edge_label": 0.78,
+    "annotation": 0.78,
+    "region_title": 1.11
+  },
+  "primary_view_scale": 0.67
+}
+```
+
+Known roles are `node_label`, `edge_label`, `annotation`, `region_title`, and `hierarchy_label`; the `viewing_profile` string is carried into the manifest as provenance. Absolute keys win when both forms would apply. A partial absolute form may declare only the sizes that differ from the reference calibration (ordinary 18, edge 14, annotation 14, region title 20, hierarchy 20); undeclared roles keep the reference value and `annotation_font` follows `edge_label_font` when omitted.
+
+## Hierarchy arrow labels
+
+An expand label may sit on its arrow or beside it, controlled by `hierarchy_label_placement` in `project.typography` (`auto` default, `on-shape`, or `beside`). With `auto` or `on-shape`, the planner first tries to keep the wrapped label ink inside the arrow: the cross-section may grow toward 128/160/192/256 thickness, clamped to the parent∩child corridor band and re-centered inside it, but the label ink may cover at most 45% of the arrow polygon (an ink dimension above 90% of the box also fails). If no thickness in budget fits, `auto` moves the label to the freer shaft flank as a separate text cell (`expand:<edge>.label`) and `on-shape` keeps the grown arrow and requires a rendered occlusion exception. `beside` always uses the companion cell. A companion cell must stay clear of its own arrow polygon in the rendered SVG; residual overlap with other geometry is a planner finding, not a silent placement.
+
+A beside label runs along its corridor. When an east/west arrow crosses a corridor narrower than the wrapped label, the planner rotates the companion (`horizontal=0`): the wrapped block is emitted with explicit `<br>` breaks and, once rotated, its lines stack across the corridor while its longest line runs along it; the compiled cell geometry is that rotated footprint (cross-section wide, ink length tall). An unwrapped single line is the fallback when even the wrapped cross-section would not fit. A flank narrower than the label is tried at progressively tighter wraps (down to half the natural width) before rotation, so a squeezed label shortens instead of overrunning its neighbour. Sibling expand arrows and companion cells already placed in the same corridor are obstacles too: two beside labels cannot claim the same flank, and the planner falls back to a shifted flank or a tighter wrap before it reports. Rotation is chosen only when it clears more geometry than every horizontal option. A direct arrow whose cross-section cannot fit the band with the 24px corner margin on both sides gives up thickness down to the 48px minimum before the finding is reported; on-shape arrows keep their grown cross-section. A direct arrow whose cross-section still sits closer than 24px to the child boundary corner is reported as a corridor finding; widen the overlap band or move the child region instead of accepting a corner-grazing arrow.
+
+The rendered SVG audit enforces the budget with `maximum_hierarchy_label_occlusion` (default 0.45) against the exported singleArrow silhouette, honoring `hierarchy_label_occlusion_exceptions` as an ID-to-reason object. Draw.io exports rotated labels as an unrotated image inside a `rotate()` group, so the auditor resolves every element's accumulated transform before measuring its box.
+
 ## Size geometry from content
 
 Start from measured rendered text and add consistent padding. Useful starting ratios are:
@@ -118,3 +162,4 @@ Every exception is an ID-to-reason object with a non-empty reason. Select differ
 5. render with official Draw.io and inspect at the declared primary scale;
 6. revise geometry before lowering font size.
 7. inspect every edge label in the official Draw.io detail export; its background may interrupt a straight line but it must not touch a node, arrowhead, region title, or another label.
+8. inspect every expand-arrow label in the official export; on-shape ink may not cover its arrow beyond the occlusion budget, and a beside companion must not overlap its own arrow or other geometry.

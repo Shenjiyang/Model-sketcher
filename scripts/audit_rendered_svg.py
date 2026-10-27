@@ -23,7 +23,12 @@ from audit_drawio import (
     orthogonal_segments_conflict,
     parse_style,
 )
-from hierarchy_arrow_geometry import box_intersects_polygon, segment_intersects_polygon, single_arrow_polygon
+from hierarchy_arrow_geometry import (
+    box_intersects_polygon,
+    polygon_area,
+    segment_intersects_polygon,
+    single_arrow_polygon,
+)
 
 try:
     from PIL import Image
@@ -289,6 +294,69 @@ def points_box(points: list[tuple[float, float]]) -> Box | None:
     )
 
 
+IDENTITY_MATRIX = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+TRANSFORM_TOKEN = re.compile(rf"(matrix|translate|rotate|scale)\s*\(([^)]*)\)")
+
+
+def compose_matrix(parent: tuple[float, ...], child: tuple[float, ...]) -> tuple[float, ...]:
+    a1, b1, c1, d1, e1, f1 = parent
+    a2, b2, c2, d2, e2, f2 = child
+    return (
+        a1 * a2 + c1 * b2,
+        b1 * a2 + d1 * b2,
+        a1 * c2 + c1 * d2,
+        b1 * c2 + d1 * d2,
+        a1 * e2 + c1 * f2 + e1,
+        b1 * e2 + d1 * f2 + f1,
+    )
+
+
+def parse_transform(value: str) -> tuple[float, ...]:
+    """Compose the affine transforms of one SVG element in declaration order."""
+    matrix = IDENTITY_MATRIX
+    for name, raw in TRANSFORM_TOKEN.findall(value or ""):
+        numbers = [float(item) for item in re.findall(NUMBER, raw)]
+        if name == "matrix" and len(numbers) >= 6:
+            operation = tuple(numbers[:6])
+        elif name == "translate" and numbers:
+            tx = numbers[0]
+            ty = numbers[1] if len(numbers) > 1 else 0.0
+            operation = (1.0, 0.0, 0.0, 1.0, tx, ty)
+        elif name == "scale" and numbers:
+            sx = numbers[0]
+            sy = numbers[1] if len(numbers) > 1 else sx
+            operation = (sx, 0.0, 0.0, sy, 0.0, 0.0)
+        elif name == "rotate" and numbers:
+            angle = math.radians(numbers[0])
+            cos, sin = math.cos(angle), math.sin(angle)
+            cx = numbers[1] if len(numbers) > 2 else 0.0
+            cy = numbers[2] if len(numbers) > 2 else 0.0
+            operation = (
+                cos, sin, -sin, cos,
+                cx - cos * cx + sin * cy,
+                cy - sin * cx - cos * cy,
+            )
+        else:
+            continue
+        matrix = compose_matrix(matrix, operation)
+    return matrix
+
+
+def transform_point(point: tuple[float, float], matrix: tuple[float, ...]) -> tuple[float, float]:
+    a, b, c, d, e, f = matrix
+    return (a * point[0] + c * point[1] + e, b * point[0] + d * point[1] + f)
+
+
+def transform_box(box: Box, matrix: tuple[float, ...]) -> Box:
+    if matrix == IDENTITY_MATRIX:
+        return box
+    corners = [
+        transform_point(point, matrix)
+        for point in ((box.x, box.y), (box.right, box.y), (box.x, box.bottom), (box.right, box.bottom))
+    ]
+    return points_box(corners)
+
+
 def path_points(data: str, include_controls: bool = False) -> list[tuple[float, float]]:
     """Return points from common Draw.io path commands; curves include controls for bounds."""
     tokens = PATH_TOKEN.findall(data)
@@ -361,17 +429,27 @@ def straight_runs(points):
     return list(zip(result, result[1:]))
 
 
-def owned_elements(group: ET.Element) -> Iterator[tuple[ET.Element, bool]]:
-    """Yield descendants owned by one cell, excluding nested data-cell-id groups."""
-    def visit(element: ET.Element, in_label_switch: bool) -> Iterator[tuple[ET.Element, bool]]:
+def owned_elements(group: ET.Element) -> Iterator[tuple[ET.Element, bool, tuple[float, ...]]]:
+    """Yield descendants owned by one cell with their page-space transform.
+
+    Draw.io draws singleArrow paths and rotated labels under a `rotate(...)`
+    group, so a box read from the raw attributes is only correct after the
+    accumulated ancestor transforms are applied.
+    """
+    def visit(
+        element: ET.Element,
+        in_label_switch: bool,
+        matrix: tuple[float, ...],
+    ) -> Iterator[tuple[ET.Element, bool, tuple[float, ...]]]:
         for child in element:
             if child is not group and child.get("data-cell-id"):
                 continue
             child_label_switch = in_label_switch or local_name(child) == "switch"
-            yield child, child_label_switch
-            yield from visit(child, child_label_switch)
+            child_matrix = compose_matrix(matrix, parse_transform(child.get("transform", "")))
+            yield child, child_label_switch, child_matrix
+            yield from visit(child, child_label_switch, child_matrix)
 
-    yield from visit(group, False)
+    yield from visit(group, False, IDENTITY_MATRIX)
 
 
 def rendered_cells(svg: Path, trim_label_ids: set[str] | None = None) -> dict[str, RenderedCell]:
@@ -386,10 +464,11 @@ def rendered_cells(svg: Path, trim_label_ids: set[str] | None = None) -> dict[st
         route_points: list[tuple[float, float]] = []
         route_curve_count = 0
         arrows: list[Box] = []
-        for element, in_label_switch in owned_elements(group):
+        for element, in_label_switch, matrix in owned_elements(group):
             tag = local_name(element)
             if tag == "image" and in_label_switch:
                 box = rendered_image_box(element, cell_id in (trim_label_ids or set()))
+                box = None if box is None else transform_box(box, matrix)
                 if box and box.width > 0 and box.height > 0:
                     labels.append(box)
                 continue
@@ -398,7 +477,13 @@ def rendered_cells(svg: Path, trim_label_ids: set[str] | None = None) -> dict[st
             box = element_box(element)
             if box is None:
                 continue
+            box = transform_box(box, matrix)
             style = element.get("style", "")
+            if tag == "path" and "stroke:" in style and "fill:" not in style:
+                points = path_points(element.get("d", ""))
+                points = [
+                    transform_point(point, matrix) for point in points
+                ]
             if tag == "path" and "stroke:" in style and "fill:" not in style:
                 points = path_points(element.get("d", ""))
                 points = [
@@ -640,21 +725,41 @@ def main() -> int:
                 continue
             errors.append(f"rendered labels overlap: {left_id} / {right_id}")
 
-    blockers = {
-        cell_id: item.shape_box
-        for cell_id, item in rendered.items()
-        if cell_id in vertices - regions - text_only - ignored and item.shape_box
-    }
-    hierarchy_polygons = {
-        cell_id: single_arrow_polygon(
+    # Blockers are cells routes and labels must not cross. Block arrows export
+    # as filled paths (no rect), so their silhouette comes from arrow_boxes;
+    # without that fallback singleArrow cells silently vanish from every
+    # polygon-precise check below.
+    blockers: dict[str, Box] = {}
+    for cell_id, item in rendered.items():
+        if cell_id not in vertices - regions - text_only - ignored:
+            continue
+        box = item.shape_box
+        if box is None and styles[cell_id].get("shape") in {"singleArrow", "flexArrow"}:
+            box = union_boxes(item.arrow_boxes)
+        if box is not None:
+            blockers[cell_id] = box
+
+    def arrow_cell_box(cell_id: str, box: Box) -> Box:
+        # The SVG export draws singleArrow paths unrotated (east) under a rotate
+        # transform, so a rendered north/south arrow's path bbox is transposed.
+        direction = styles[cell_id].get("direction", "east")
+        if direction in {"north", "south"} and box.width > box.height:
+            cx, cy = (box.x + box.right) / 2, (box.y + box.bottom) / 2
+            half_w, half_h = box.height / 2, box.width / 2
+            return Box(cx - half_w, cy - half_h, cx + half_w, cy + half_h)
+        return box
+
+    hierarchy_polygons: dict[str, list[tuple[float, float]]] = {}
+    for cell_id, raw_box in blockers.items():
+        if styles[cell_id].get("shape") != "singleArrow":
+            continue
+        box = arrow_cell_box(cell_id, raw_box)
+        hierarchy_polygons[cell_id] = single_arrow_polygon(
             box.x, box.y, box.width, box.height,
             styles[cell_id].get("direction", "east"),
             float(styles[cell_id].get("arrowWidth", 0.3)),
             float(styles[cell_id].get("arrowSize", 0.2)),
         )
-        for cell_id, box in blockers.items()
-        if styles[cell_id].get("shape") == "singleArrow"
-    }
     for label_id, label_box in {**edge_labels, **region_labels}.items():
         for node_id, node_box in blockers.items():
             if label_id == node_id or pair_key(label_id, node_id) in allowed_label_node:
@@ -674,6 +779,38 @@ def main() -> int:
             } if label_id in edges else set()
             relation = "source/target node" if node_id in endpoints else "unrelated node"
             errors.append(f"rendered {label_id} label overlaps {relation}: {node_id}")
+
+    # A hierarchy label painted on its own arrow must leave the arrow silhouette
+    # recognizable; a beside-label companion must stay clear of the arrow.
+    try:
+        maximum_label_occlusion = float(config.get("maximum_hierarchy_label_occlusion", 0.45))
+    except (TypeError, ValueError):
+        maximum_label_occlusion = 0.45
+        errors.append("maximum_hierarchy_label_occlusion must be a positive number")
+    if not math.isfinite(maximum_label_occlusion) or maximum_label_occlusion <= 0:
+        errors.append("maximum_hierarchy_label_occlusion must be a positive number")
+        maximum_label_occlusion = 0.45
+    occlusion_exceptions = exception_keys(config, "hierarchy_label_occlusion_exceptions")
+    for cell_id, polygon in hierarchy_polygons.items():
+        if cell_id in occlusion_exceptions:
+            continue
+        item = rendered.get(cell_id)
+        if not item or not item.label_box:
+            continue
+        ratio = (item.label_box.width * item.label_box.height) / max(polygon_area(polygon), 1.0)
+        if ratio > maximum_label_occlusion + 1e-6:
+            errors.append(
+                f"rendered hierarchy label occludes its arrow "
+                f"({ratio:.2f} > {maximum_label_occlusion:g}): {cell_id}"
+            )
+    for label_id, label_box in labeled.items():
+        if not label_id.endswith(".label") or label_id in occlusion_exceptions:
+            continue
+        polygon = hierarchy_polygons.get(label_id[: -len(".label")])
+        if polygon and box_intersects_polygon(
+            label_box.x, label_box.y, label_box.width, label_box.height, polygon
+        ):
+            errors.append(f"rendered beside-label overlaps its hierarchy arrow: {label_id}")
 
     for edge_id in edges - ignored:
         item = rendered.get(edge_id)

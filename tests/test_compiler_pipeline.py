@@ -25,6 +25,7 @@ from plan_layout import (
     plan_hierarchy_arrows,
 )
 from plan_change_impact import analyze, validate_state
+from typography import wrapped_label_ink, wrapped_label_lines
 from render_topology_contract import render
 from validate_architecture_ir import validate, validate_detail_runtime_state_contracts
 from view_projection import project_active_view
@@ -1270,6 +1271,112 @@ class CompilerPipelineTest(unittest.TestCase):
         audit.check_hierarchy()
         self.assertEqual(audit.errors, [])
 
+    def test_expand_beside_label_compiles_as_companion_text_cell(self):
+        data = expansion_sample()
+        data["edges"]["expand_detail"]["label"] = "expands the Detail region with a long label"
+        data["project"]["typography"] = {"hierarchy_label_placement": "beside"}
+        self.assertEqual(validate(data, Path(".")), [])
+        layout = plan(data, "digest")
+        arrow = layout["hierarchy_arrows"]["expand_detail"]
+        self.assertEqual(arrow.get("label_placement"), "beside")
+
+        tree = compile_diagram(data, layout)
+        root = tree.getroot()
+        arrow_cell = root.find(".//mxCell[@id='expand:expand_detail']")
+        self.assertIsNotNone(arrow_cell)
+        self.assertEqual(arrow_cell.get("value"), "")
+        label_cell = root.find(".//mxCell[@id='expand:expand_detail.label']")
+        self.assertIsNotNone(label_cell)
+        label_style = label_cell.get("style", "")
+        self.assertIn("text;html=1", label_style)
+        self.assertIn("strokeColor=none", label_style)
+        self.assertIn("fillColor=none", label_style)
+        dx, dy = arrow["label_offset"]
+        geometry = label_cell.find("mxGeometry")
+        self.assertIsNotNone(geometry)
+        self.assertAlmostEqual(float(geometry.get("x")), arrow["x"] + dx, places=2)
+        self.assertAlmostEqual(float(geometry.get("y")), arrow["y"] + dy, places=2)
+        ink_w, ink_h = arrow["label_ink"]
+        self.assertAlmostEqual(float(geometry.get("width")), ink_w + 8.0, places=2)
+        self.assertAlmostEqual(float(geometry.get("height")), ink_h + 8.0, places=2)
+
+        manifest = build_manifest(data, layout)
+        self.assertIn("expand:expand_detail", manifest["defaults"]["required_cells"])
+        self.assertIn("expand:expand_detail.label", manifest["defaults"]["required_cells"])
+        page = decode_diagram(root.find("diagram"))
+        audit = PageAudit("compiled", page, manifest["defaults"])
+        audit.prepare()
+        audit.check_hierarchy()
+        self.assertEqual(audit.errors, [])
+
+    def test_rotated_beside_label_swaps_the_companion_geometry_axes(self):
+        data = expansion_sample()
+        data["edges"]["expand_detail"]["label"] = "expands the Detail region with a long label"
+        data["project"]["typography"] = {"hierarchy_label_placement": "beside"}
+        self.assertEqual(validate(data, Path(".")), [])
+        layout = plan(data, "digest")
+        arrow = layout["hierarchy_arrows"]["expand_detail"]
+        # What the planner records when the corridor is narrower than the
+        # label: single-line ink, a rotated footprint, no wrapping.
+        arrow["label_placement"] = "beside"
+        arrow["label_rotated"] = True
+        arrow["label_offset"] = [12.0, 12.0]
+        arrow["label_ink"] = [182.0, 25.2]
+        arrow["label_wrap"] = 1e9
+
+        tree = compile_diagram(data, layout)
+        root = tree.getroot()
+        arrow_cell = root.find(".//mxCell[@id='expand:expand_detail']")
+        self.assertEqual(arrow_cell.get("value"), "")
+        label_cell = root.find(".//mxCell[@id='expand:expand_detail.label']")
+        self.assertIsNotNone(label_cell)
+        label_style = label_cell.get("style", "")
+        self.assertIn("horizontal=0", label_style)
+        self.assertIn("whiteSpace=nowrap", label_style)
+        self.assertNotIn("whiteSpace=wrap", label_style)
+        self.assertNotIn("<br>", label_cell.get("value", ""))
+        geometry = label_cell.find("mxGeometry")
+        self.assertAlmostEqual(float(geometry.get("width")), 25.2 + 8.0, places=2)
+        self.assertAlmostEqual(float(geometry.get("height")), 182.0 + 8.0, places=2)
+
+        manifest = build_manifest(data, layout)
+        self.assertIn("expand:expand_detail.label", manifest["defaults"]["required_cells"])
+        page = decode_diagram(root.find("diagram"))
+        audit = PageAudit("compiled", page, manifest["defaults"])
+        audit.prepare()
+        audit.check_hierarchy()
+        self.assertEqual(audit.errors, [])
+
+    def test_rotated_beside_label_emits_the_planner_wrap_as_explicit_breaks(self):
+        data = expansion_sample()
+        label = "expands the Detail region with a long label"
+        data["edges"]["expand_detail"]["label"] = label
+        data["project"]["typography"] = {"hierarchy_label_placement": "beside"}
+        self.assertEqual(validate(data, Path(".")), [])
+        layout = plan(data, "digest")
+        arrow = layout["hierarchy_arrows"]["expand_detail"]
+        wrap = 120.0
+        display = arrow.get("display_label") or label
+        ink = wrapped_label_ink(display, 20, wrap)
+        arrow.update({
+            "label_placement": "beside",
+            "label_rotated": True,
+            "label_offset": [12.0, 12.0],
+            "label_ink": list(ink),
+            "label_wrap": wrap,
+        })
+
+        tree = compile_diagram(data, layout)
+        label_cell = tree.getroot().find(".//mxCell[@id='expand:expand_detail.label']")
+        lines = label_cell.get("value", "").split("<br>")
+        self.assertGreater(len(lines), 1)
+        # The explicit breaks must reproduce the plan-time wrap, so the
+        # exported image is the block the rotated footprint was sized for.
+        self.assertEqual(lines, wrapped_label_lines(display, 20, wrap))
+        geometry = label_cell.find("mxGeometry")
+        self.assertAlmostEqual(float(geometry.get("width")), ink[1] + 8.0, places=2)
+        self.assertAlmostEqual(float(geometry.get("height")), ink[0] + 8.0, places=2)
+
     def test_expand_can_use_owned_region_boundary_without_losing_semantic_parent(self):
         data = expansion_sample()
         data["edges"]["expand_detail"].update({
@@ -1498,7 +1605,10 @@ class CompilerPipelineTest(unittest.TestCase):
         self.assertNotIn("Stage A", arrow["display_label"])
         self.assertEqual(validate_hierarchy_arrow_geometry(data, layout), [])
         tree = compile_diagram(data, layout)
-        label = tree.find(".//mxCell[@id='expand:expand_detail']").get("value")
+        arrow_cell = tree.find(".//mxCell[@id='expand:expand_detail']")
+        label = arrow_cell.get("value") or tree.find(
+            ".//mxCell[@id='expand:expand_detail.label']"
+        ).get("value")
         self.assertIn(arrow["anchor_label"], label)
 
     def test_signpost_label_does_not_repeat_its_own_anchor(self):

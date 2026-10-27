@@ -18,6 +18,8 @@ from semantic_palette import (
     semantic_glyph,
     semantic_style,
 )
+from hierarchy_arrow_geometry import COMPILED_ARROW_SIZE_RATIO, COMPILED_ARROW_WIDTH_RATIO
+from typography import resolve_typography, wrapped_label_lines
 from validate_architecture_ir import edge_display_label, load, validate
 from view_projection import project_active_view, project_layout_view
 from fusion_presentation import visible_fusion_boundaries
@@ -34,7 +36,8 @@ LEGEND_ORDER = (
     "communication", "composite-op", "residual-op", "cache",
 )
 HIERARCHY_ARROW_STYLE = (
-    "shape=singleArrow;arrowWidth=0.52;arrowSize=0.38;whiteSpace=wrap;html=1;"
+    f"shape=singleArrow;arrowWidth={COMPILED_ARROW_WIDTH_RATIO};arrowSize={COMPILED_ARROW_SIZE_RATIO};"
+    "whiteSpace=wrap;html=1;"
     "fillColor=#FFFFFF;strokeColor=#555555;strokeWidth=1.8;fontStyle=1;"
 )
 FUSION_BOUNDARY_STYLE = (
@@ -440,12 +443,12 @@ def compile_diagram(data: dict, layout: dict) -> ET.ElementTree:
     )
     if geometry_errors:
         raise ValueError("; ".join(geometry_errors))
-    typography = data.get("project", {}).get("typography", {})
-    ordinary_font = int(typography.get("ordinary_node_font", 18))
-    edge_font = int(typography.get("edge_label_font", 14))
-    annotation_font = int(typography.get("annotation_font", edge_font))
-    region_font = int(typography.get("region_title_font", 20))
-    hierarchy_font = int(typography.get("hierarchy_label_font", 20))
+    typography = resolve_typography(data.get("project", {}).get("typography"))
+    ordinary_font = typography["ordinary_node_font"]
+    edge_font = typography["edge_label_font"]
+    annotation_font = typography["annotation_font"]
+    region_font = typography["region_title_font"]
+    hierarchy_font = typography["hierarchy_label_font"]
 
     rails = rail_contracts(data, layout)
     if rails != layout.get('junction_rails', {}):
@@ -507,12 +510,49 @@ def compile_diagram(data: dict, layout: dict) -> ET.ElementTree:
         arrow = layout["hierarchy_arrows"][edge_id]
         child_region_id = arrow["child_region"]
         label = str(arrow.get("display_label") or edge.get("label") or f"expand {data['regions'][child_region_id]['label']}")
+        placement = arrow.get("label_placement", "on-shape")
         cell = ET.SubElement(root, "mxCell", {
-            "id": f"expand:{edge_id}", "value": label.replace("\\n", "\n"),
+            "id": f"expand:{edge_id}", "value": "" if placement == "beside" else label.replace("\\n", "\n"),
             "style": HIERARCHY_ARROW_STYLE + f"fontSize={hierarchy_font};direction={arrow['direction']};",
             "vertex": "1", "parent": "1",
         })
         geometry(cell, arrow)
+        if placement == "beside":
+            dx, dy = arrow.get("label_offset", (arrow["w"] + 12.0, (arrow["h"] - hierarchy_font * 1.3) / 2))
+            ink_w, ink_h = arrow.get("label_ink", (len(label) * hierarchy_font * 0.7, hierarchy_font * 1.3))
+            rotated = bool(arrow.get("label_rotated"))
+            label_style = (
+                "text;html=1;strokeColor=none;fillColor=none;"
+                "align=center;verticalAlign=middle;fontStyle=1;"
+                f"fontSize={hierarchy_font};"
+            )
+            # A rotated label runs along a corridor narrower than its text.
+            # Draw.io rotates the (unwrapped) text inside the cell, so the
+            # geometry box is the rotated footprint: cross-section wide and
+            # ink length tall. `whiteSpace=nowrap` suppresses automatic
+            # wrapping, so emit the planner's breaks explicitly as <br>.
+            if rotated:
+                lines = wrapped_label_lines(
+                    label, hierarchy_font,
+                    arrow.get("label_wrap") or max(ink_w, hierarchy_font),
+                )
+                label_value = "<br>".join(line or " " for line in lines)
+                label_style += "horizontal=0;whiteSpace=nowrap;"
+            else:
+                label_value = label.replace("\\n", "\n")
+                label_style += "whiteSpace=wrap;"
+            label_box = (ink_h + 8.0, ink_w + 8.0) if rotated else (ink_w + 8.0, ink_h + 8.0)
+            label_cell = ET.SubElement(root, "mxCell", {
+                "id": f"expand:{edge_id}.label", "value": label_value,
+                "style": label_style,
+                "vertex": "1", "parent": "1",
+            })
+            geometry(label_cell, {
+                "x": round(arrow["x"] + dx, 2),
+                "y": round(arrow["y"] + dy, 2),
+                "w": round(label_box[0], 2),
+                "h": round(label_box[1], 2),
+            })
 
     for edge_id, edge in ordered_ordinary_edges(data, jump_contracts):
         route = layout["edges"][edge_id]

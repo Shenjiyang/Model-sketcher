@@ -185,6 +185,8 @@ Region density uses the exact members in `region_content_contracts`, so decorati
   "label_fit_tolerance": 3.0,
   "material_overlap_depth": 3.0,
   "material_overlap_ratio": 0.08,
+  "maximum_hierarchy_label_occlusion": 0.45,
+  "hierarchy_label_occlusion_exceptions": {},
   "ignored_cells": {},
   "allowed_label_overlaps": {},
   "allowed_label_node_overlaps": {},
@@ -199,7 +201,7 @@ Region density uses the exact members in `region_content_contracts`, so decorati
 }
 ```
 
-`minimum_clearance` controls non-blocking proximity warnings. `label_fit_tolerance` absorbs small antialiasing/rasterization overflow in official fallback images. `material_overlap_depth` and `material_overlap_ratio` suppress incidental subpixel contacts; a collision must satisfy both thresholds before it is a hard failure.
+`minimum_clearance` controls non-blocking proximity warnings. `label_fit_tolerance` absorbs small antialiasing/rasterization overflow in official fallback images. `material_overlap_depth` and `material_overlap_ratio` suppress incidental subpixel contacts; a collision must satisfy both thresholds before it is a hard failure. `maximum_hierarchy_label_occlusion` bounds the fraction of an expand-arrow polygon its own on-shape label ink may cover in the official SVG; `hierarchy_label_occlusion_exceptions` registers ID-to-reason waivers for arrows that intentionally keep an over-budget label on-shape.
 
 Every exception field is an ID-to-reason object. Pair exceptions use a stable normalized key with IDs sorted lexically and joined by `|`:
 

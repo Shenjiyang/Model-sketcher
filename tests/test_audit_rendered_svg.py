@@ -49,7 +49,7 @@ def group(svg: ET.Element, cell_id: str, *, shape: tuple[float, float, float, fl
           label: tuple[float, float, float, float] | None = None,
           route: list[tuple[float, float]] | None = None, label_href: str = "",
           arrow: tuple[float, float, float, float] | None = None,
-          route_path: str = "") -> None:
+          route_path: str = "", label_transform: str = "") -> None:
     owner = ET.SubElement(svg, f"{{{SVG_NS}}}g", {"data-cell-id": cell_id})
     if shape:
         x, y, width, height = shape
@@ -67,7 +67,12 @@ def group(svg: ET.Element, cell_id: str, *, shape: tuple[float, float, float, fl
         })
     if label:
         x, y, width, height = label
-        switch = ET.SubElement(owner, f"{{{SVG_NS}}}switch")
+        # Draw.io wraps rotated labels (horizontal=0) in a rotate() group and
+        # exports the text image unrotated inside it.
+        holder = owner
+        if label_transform:
+            holder = ET.SubElement(owner, f"{{{SVG_NS}}}g", {"transform": label_transform})
+        switch = ET.SubElement(holder, f"{{{SVG_NS}}}switch")
         attrs = {
             "x": str(x), "y": str(y), "width": str(width), "height": str(height),
         }
@@ -472,6 +477,202 @@ class RenderedSvgAuditTest(unittest.TestCase):
     def test_rendered_route_through_single_arrow_shaft_collides(self) -> None:
         result = self.hierarchy_arrow_crossing_case(20)
         self.assertIn("edge crosses unrelated node: edge / expand:test", result.stdout)
+
+
+class RenderedHierarchyLabelTests(unittest.TestCase):
+    """Own-arrow occlusion and beside-label clearance for expand arrows."""
+
+    def run_case(
+        self, cells: list[dict], groups: list[dict], manifest: dict | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            model = ET.Element("mxGraphModel")
+            root = ET.SubElement(model, "root")
+            ET.SubElement(root, "mxCell", {"id": "0"})
+            ET.SubElement(root, "mxCell", {"id": "1", "parent": "0"})
+            for definition in cells:
+                cell(root, **definition)
+            diagram = directory / "case.drawio"
+            ET.ElementTree(model).write(diagram, encoding="utf-8", xml_declaration=True)
+
+            svg = ET.Element(f"{{{SVG_NS}}}svg")
+            for definition in groups:
+                group(svg, **definition)
+            rendered = directory / "case.svg"
+            ET.ElementTree(svg).write(rendered, encoding="utf-8", xml_declaration=True)
+            command = [sys.executable, str(AUDITOR), str(diagram), str(rendered)]
+            if manifest is not None:
+                manifest_path = directory / "case.audit.json"
+                manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+                command.extend(["--manifest", str(manifest_path)])
+            return subprocess.run(command, capture_output=True, text=True, check=False)
+
+    @staticmethod
+    def arrow_cell(cell_id: str = "expand:e1", *, direction: str = "south", value: str = "") -> dict:
+        return {
+            "cell_id": cell_id, "vertex": True, "value": value,
+            "style": f"shape=singleArrow;direction={direction};arrowWidth=0.52;arrowSize=0.38;",
+        }
+
+    def test_label_ink_over_half_the_arrow_fails_occlusion(self) -> None:
+        cells = [self.arrow_cell(value="expands Dense Layers template")]
+        groups = [{
+            "cell_id": "expand:e1",
+            "shape": (0, 0, 96, 300),
+            # Ink 86x110 = 9460 px^2; arrow polygon = 0.5124 * 96 * 300 ≈ 14757
+            # px^2, so the ratio 0.64 blows past the 0.45 budget.
+            "label": (5, 90, 86, 110), "label_href": png_data_uri(86, 110, 86),
+        }]
+        result = self.run_case(cells, groups)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("rendered hierarchy label occludes its arrow (0.64 > 0.45): expand:e1", result.stdout)
+
+    def test_modest_label_ink_passes_occlusion(self) -> None:
+        cells = [self.arrow_cell(value="expands")]
+        groups = [{
+            "cell_id": "expand:e1",
+            "shape": (0, 0, 96, 300),
+            "label": (18, 90, 60, 40), "label_href": png_data_uri(60, 40, 60),
+        }]
+        result = self.run_case(cells, groups)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_manifest_occlusion_exception_suppresses_the_error(self) -> None:
+        cells = [self.arrow_cell(value="expands Dense Layers template")]
+        groups = [{
+            "cell_id": "expand:e1",
+            "shape": (0, 0, 96, 300),
+            "label": (5, 90, 86, 110), "label_href": png_data_uri(86, 110, 86),
+        }]
+        manifest = {
+            "schema_version": 1,
+            "defaults": {
+                "rendered_svg_audit": {
+                    "hierarchy_label_occlusion_exceptions": {
+                        "expand:e1": "author-accepted label on arrow"
+                    }
+                }
+            },
+        }
+        result = self.run_case(cells, groups, manifest)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_beside_label_overlapping_its_arrow_fails(self) -> None:
+        cells = [
+            self.arrow_cell(),
+            {
+                "cell_id": "expand:e1.label", "vertex": True,
+                "value": "expands Dense Layers template",
+                "style": "text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;fontStyle=1;fontSize=20;",
+            },
+        ]
+        groups = [
+            {"cell_id": "expand:e1", "shape": (0, 0, 96, 300)},
+            {
+                "cell_id": "expand:e1.label",
+                "label": (10, 100, 80, 24), "label_href": png_data_uri(80, 24, 80),
+            },
+        ]
+        result = self.run_case(cells, groups)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("rendered beside-label overlaps its hierarchy arrow: expand:e1.label", result.stdout)
+
+    def test_beside_label_clear_of_its_arrow_passes(self) -> None:
+        cells = [
+            self.arrow_cell(),
+            {
+                "cell_id": "expand:e1.label", "vertex": True,
+                "value": "expands Dense Layers template",
+                "style": "text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;fontStyle=1;fontSize=20;",
+            },
+        ]
+        groups = [
+            {"cell_id": "expand:e1", "shape": (0, 0, 96, 300)},
+            {
+                "cell_id": "expand:e1.label",
+                "label": (108, 120, 80, 24), "label_href": png_data_uri(80, 24, 80),
+            },
+        ]
+        result = self.run_case(cells, groups)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_north_arrow_transposed_bbox_is_normalized_before_clearance(self) -> None:
+        # The SVG export draws N/S singleArrow paths unrotated under a rotate
+        # transform, so the rendered path bbox arrives transposed (120x96 for a
+        # logical 96x120 arrow). The auditor must normalize around the center
+        # before testing beside-label clearance: this label box (y 40-60) only
+        # touches the true polygon, whose head starts at y=48, not the raw bbox
+        # whose polygon starts at y=60.
+        cells = [
+            self.arrow_cell(direction="north"),
+            {
+                "cell_id": "expand:e1.label", "vertex": True,
+                "value": "expands",
+                "style": "text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;fontStyle=1;fontSize=20;",
+            },
+        ]
+        groups = [
+            {"cell_id": "expand:e1", "shape": (60, 60, 120, 96)},
+            {
+                "cell_id": "expand:e1.label",
+                "label": (100, 40, 40, 20), "label_href": png_data_uri(40, 20, 40),
+            },
+        ]
+        result = self.run_case(cells, groups)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("rendered beside-label overlaps its hierarchy arrow: expand:e1.label", result.stdout)
+
+
+    def test_rotated_beside_label_is_measured_in_page_space(self) -> None:
+        # Draw.io exports a horizontal=0 label as an unrotated image inside a
+        # rotate(-90) group. The image's raw bbox sits at x<0; only after the
+        # transform does the ink sit above the arrow. Without transform support
+        # the auditor would score a label that visibly floats elsewhere.
+        cells = [
+            self.arrow_cell(direction="east"),
+            {
+                "cell_id": "expand:e1.label", "vertex": True,
+                "value": "expands",
+                "style": "text;html=1;strokeColor=none;fillColor=none;horizontal=0;whiteSpace=nowrap;fontStyle=1;fontSize=20;",
+            },
+        ]
+        groups = [
+            {"cell_id": "expand:e1", "shape": (36, 100, 120, 96)},
+            {
+                "cell_id": "expand:e1.label",
+                # Local (36,100,60,30) sits on the arrow, but rotate(-90) maps
+                # it to page box (-44,-14,60,30), clear of the arrow. Reading
+                # the raw bbox would wrongly report an overlap.
+                "label": (36, 100, 60, 30), "label_href": png_data_uri(60, 30, 60),
+                "label_transform": "rotate(-90 66 210)",
+            },
+        ]
+        result = self.run_case(cells, groups)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_rotated_beside_label_overlapping_its_arrow_fails(self) -> None:
+        cells = [
+            self.arrow_cell(direction="east"),
+            {
+                "cell_id": "expand:e1.label", "vertex": True,
+                "value": "expands",
+                "style": "text;html=1;strokeColor=none;fillColor=none;horizontal=0;whiteSpace=nowrap;fontStyle=1;fontSize=20;",
+            },
+        ]
+        groups = [
+            {"cell_id": "expand:e1", "shape": (36, 100, 120, 96)},
+            {
+                "cell_id": "expand:e1.label",
+                # Local (76,204,60,30) -> rotated page box (60,140,30,60),
+                # which crosses the east arrow's shaft.
+                "label": (76, 204, 60, 30), "label_href": png_data_uri(60, 30, 60),
+                "label_transform": "rotate(-90 66 210)",
+            },
+        ]
+        result = self.run_case(cells, groups)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("rendered beside-label overlaps its hierarchy arrow: expand:e1.label", result.stdout)
 
 
 if __name__ == "__main__":

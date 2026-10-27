@@ -15,6 +15,7 @@ from compile_drawio import (
     validate_fusion_boundary_geometry,
     validate_hierarchy_arrow_geometry,
 )
+from plan_layout import HIERARCHY_LABEL_MAX_OCCLUSION
 from semantic_palette import (
     SEMANTIC_GLYPHS,
     SEMANTIC_PALETTE,
@@ -22,6 +23,7 @@ from semantic_palette import (
     resolve_visual_class,
     semantic_glyph,
 )
+from typography import resolve_typography
 from validate_architecture_ir import load, validate
 from view_projection import project_active_view, project_layout_view
 from fusion_presentation import execution_fusion_ledger, fusion_presentation
@@ -39,12 +41,34 @@ def build_manifest(data: dict, layout: dict | None = None) -> dict:
     data = project_layout_view(data, layout or {})
     rails = rail_contracts(data, layout) if layout else {}
     markers = rail_markers(rails)
-    ordinary_font = float(
-        data.get("project", {}).get("typography", {}).get("ordinary_node_font", 18)
-    )
-    edge_label_font = float(
-        data.get("project", {}).get("typography", {}).get("edge_label_font", ordinary_font * 0.75)
-    )
+    typography = resolve_typography(data.get("project", {}).get("typography"))
+    ordinary_font = float(typography["ordinary_node_font"])
+    edge_label_font = float(typography["edge_label_font"])
+    typography_contract = {
+        "ordinary_node_font": typography["ordinary_node_font"],
+        "edge_label_font": typography["edge_label_font"],
+        "annotation_font_min": typography["annotation_font"],
+        "nested_region_title_font": typography["region_title_font"],
+        "top_region_title_font": typography["region_title_font"],
+        "hierarchy_label_font": typography["hierarchy_label_font"],
+        "warn_role_ratio_drift": True,
+        "minimum_text_fill_ratio": 0.5,
+        "estimated_line_height_ratio": 1.0,
+        "minimum_vertical_padding_ratio": 0.25,
+        "node_font_exceptions": {},
+        "edge_font_exceptions": {},
+        "annotation_font_exceptions": {},
+        "region_font_exceptions": {},
+        "text_height_exceptions": {},
+        "region_title_clearance_exceptions": {},
+        "wide_node_exceptions": {},
+    }
+    if typography.get("primary_view_scale"):
+        typography_contract.update({
+            "primary_view_scale": typography["primary_view_scale"],
+            "minimum_apparent_ordinary_font": typography.get("minimum_apparent_ordinary_font", 16.0),
+            "target_apparent_ordinary_font": typography.get("target_apparent_ordinary_font", 18.0),
+        })
     region_ids = [f"region:{item}" for item in data["regions"]]
     node_ids = [f"node:{item}" for item in data["nodes"]]
     ordinary_edges = {
@@ -57,6 +81,12 @@ def build_manifest(data: dict, layout: dict | None = None) -> dict:
     }
     edge_ids = [f"edge:{item}" for item in ordinary_edges]
     arrow_ids = [f"expand:{item}" for item in expand_edges]
+    companion_label_ids = [
+        f"expand:{item}.label"
+        for item in expand_edges
+        if layout is not None
+        and layout.get("hierarchy_arrows", {}).get(item, {}).get("label_placement") == "beside"
+    ]
     fusion_policy = fusion_presentation(data)
     fusion_boundary_ids = fusion_policy["boundary_ids"]
     legend_ids = ["legend:title"] + [f"legend:{item}" for item in LEGEND_ENTRIES]
@@ -220,6 +250,7 @@ def build_manifest(data: dict, layout: dict | None = None) -> dict:
         "schema_version": 1,
         "generated_from": "architecture.json; merge workflow_contract and human review records before final delivery",
         "defaults": {
+            "typography_contract": typography_contract,
             "layout_engine": (
                 layout.get("layout_engine", {"name": "unrecorded-legacy-layout"})
                 if layout is not None else {"name": "unmaterialized"}
@@ -264,7 +295,7 @@ def build_manifest(data: dict, layout: dict | None = None) -> dict:
             "region_parents": region_parents,
             "region_content_contracts": region_content,
             "hierarchy_anchors": hierarchy_anchors,
-            "required_cells": region_ids + node_ids + edge_ids + arrow_ids + fusion_boundary_ids + legend_ids + list(markers),
+            "required_cells": region_ids + node_ids + edge_ids + arrow_ids + companion_label_ids + fusion_boundary_ids + legend_ids + list(markers),
             "execution_fusion_ledger": execution_fusion_ledger(data),
             "fusion_presentation_policy": fusion_policy,
             "expected_edges": expected_edges,
@@ -351,6 +382,8 @@ def build_manifest(data: dict, layout: dict | None = None) -> dict:
                 "allowed_labels_outside_nodes": {}, "allowed_label_at_bends": {},
                 "allowed_edge_label_distances": {},
                 "maximum_edge_label_distance": 64,
+                "maximum_hierarchy_label_occlusion": HIERARCHY_LABEL_MAX_OCCLUSION,
+                "hierarchy_label_occlusion_exceptions": {},
                 "minimum_visible_edge_label_flank": round(max(10.0, edge_label_font * 1.1), 2),
                 "minimum_edge_label_route_clearance": round(max(2.0, edge_label_font * 0.2), 2),
             },

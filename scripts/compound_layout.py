@@ -13,12 +13,13 @@ from plan_layout_elk import elk_graph, problem_from_region, convert_result, _por
 from layout_progress import phase, progress
 from layout_intents import (validate_hints, apply_problem_hints, apply_macro_hints,
                             apply_region_hints, verify_ports)
+from typography import resolve_typography
 
 
 def build_graph(data, sizes, title_font, hints=None):
     from plan_layout import region_title_layout
     hints = validate_hints(data, hints)
-    padding = max(42.0, float(data['project'].get('typography', {}).get('ordinary_node_font', 18)) * 2)
+    padding = max(42.0, float(resolve_typography(data['project'].get('typography'))['ordinary_node_font']) * 2)
     flat = deepcopy(data)
     flat['regions'] = {'all': {'operator_sequences': [
         sequence for region in data['regions'].values()
@@ -232,8 +233,9 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
                 apply_hierarchy_arrow_overrides(layout, state)
         verify_ports(data, layout, hints)
         return layout
-    font = data['project'].get('typography', {}).get('ordinary_node_font', 18)
-    title_font = data['project'].get('typography', {}).get('region_title_font', 20)
+    typography = resolve_typography(data['project'].get('typography'))
+    font = typography['ordinary_node_font']
+    title_font = typography['region_title_font']
     sizes = {nid: node_size(node, font) for nid, node in data['nodes'].items()}
     problem, graph = build_graph(data, sizes, title_font, (state or {}).get('layout_hints'))
     with tempfile.TemporaryDirectory(prefix='model-sketcher-compound-') as folder:
@@ -386,7 +388,7 @@ def plan_compound_line_jumps(data, layout, elk_label_boxes):
     radius = 1.25 * LINE_JUMP_SIZE
     keep_out = [{'x': x - radius, 'y': y - radius, 'w': 2 * radius, 'h': 2 * radius}
                 for x, y in (item['point'] for item in free)]
-    edge_font = float(data.get('project', {}).get('typography', {}).get('edge_label_font', 14))
+    edge_font = float(resolve_typography(data.get('project', {}).get('typography'))['edge_label_font'])
     for item in blocked:
         x, y = item['point']
         for eid, box in list(current.items()):

@@ -2821,6 +2821,7 @@ class PageAudit:
         detected = {
             cell_id for cell_id, cell in self.by_id.items()
             if cell.get("vertex") == "1"
+            and not cell_id.endswith(".label")
             and (
                 cell_id.startswith(("expand_", "expand:"))
                 or self.styles[cell_id].get("shape") in {"singleArrow", "flexArrow"}
@@ -2856,6 +2857,12 @@ class PageAudit:
         for arrow_id, anchor in anchors.items():
             arrow = self.absolute_box(arrow_id)
             cell = self.by_id.get(arrow_id)
+            # A beside-placed label travels in a companion text cell
+            # (expand:<edge>.label); the arrow vertex itself carries no value.
+            companion = self.by_id.get(f"{arrow_id}.label")
+            label_text = strip_markup(cell.get("value", "")) if cell is not None else ""
+            if not label_text.strip() and companion is not None:
+                label_text = strip_markup(companion.get("value", ""))
             semantic_parent_id = anchor.get("parent", "")
             attachment_mode = anchor.get("attachment_mode", "parent-node")
             attachment_id = anchor.get("attachment", semantic_parent_id)
@@ -2873,7 +2880,7 @@ class PageAudit:
                 if attachment_id not in region_ids or semantic_parent_id not in owned:
                     self.fail(f"hierarchy attachment region does not own semantic parent: {arrow_id}")
                 anchor_label = anchor.get("anchor_label")
-                visible_label = strip_markup(cell.get("value", "")) if cell is not None else ""
+                visible_label = label_text
                 if not isinstance(anchor_label, str) or not anchor_label.strip():
                     self.fail(f"region-owned hierarchy attachment lacks anchor label: {arrow_id}")
                 elif anchor_label.casefold() not in visible_label.casefold():
@@ -2951,7 +2958,7 @@ class PageAudit:
                 self.fail(f"hierarchy tail detached: {arrow_id} ({actual_tail:g} != {expected_tail:g})")
             if abs(actual_tip - expected_tip) > tolerance:
                 self.fail(f"hierarchy tip detached: {arrow_id} ({actual_tip:g} != {expected_tip:g})")
-            if not strip_markup(self.by_id[arrow_id].get("value", "")):
+            if not label_text.strip():
                 self.fail(f"hierarchy arrow missing label: {arrow_id}")
             if attachment_mode == "target-signpost":
                 for region_id in region_ids - {anchor.get("child", "")}:

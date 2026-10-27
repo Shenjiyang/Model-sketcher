@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from analysis_scope import validate_scope
+from typography import validate_typography_schema
 
 from semantic_palette import (
     SEMANTIC_PALETTE,
@@ -907,6 +908,8 @@ def validate(data: dict, base: Path, require_files: bool = False) -> list[str]:
         project["require_logical_operator_contracts"], bool
     ):
         errors.append("project.require_logical_operator_contracts must be a boolean")
+    if isinstance(project, dict) and "typography" in project:
+        errors.extend(validate_typography_schema(project.get("typography")))
     require_logical_contracts = (
         isinstance(project, dict) and project.get("require_logical_operator_contracts") is True
     )

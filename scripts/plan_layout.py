@@ -13,6 +13,8 @@ from copy import deepcopy
 from collections import defaultdict, deque
 from pathlib import Path
 
+from hierarchy_arrow_geometry import single_arrow_cell_area
+from typography import resolve_typography, wrapped_label_ink
 from validate_architecture_ir import load, validate
 from view_projection import project_active_view
 
@@ -27,6 +29,15 @@ MAX_HIERARCHY_ARROW_ASPECT_RATIO = 6.0
 EXPANSION_GAP = 120.0
 EXPANSION_REGION_GUTTER = 72.0
 HIERARCHY_SIDES = ("north", "east", "west", "south")
+# Minimum arrow-edge to child-boundary distance along the corridor axis. A
+# cross-section centered in a thin overlap band otherwise hugs the child's
+# corner, which reads as "this arrow belongs to whatever sits there".
+HIERARCHY_CORNER_MARGIN = 24.0
+# Upper bound on hierarchy-label ink area over the visible singleArrow polygon
+# when the label is painted on the arrow; above this the text swallows the
+# shaft/head silhouette and the label moves beside the shaft instead.
+HIERARCHY_LABEL_MAX_OCCLUSION = 0.45
+HIERARCHY_LABEL_GAP = 12.0
 
 
 def digest(path: Path) -> str:
@@ -126,6 +137,31 @@ def _interval_overlap(first_lo: float, first_hi: float, second_lo: float, second
     return (low, high) if high - low >= MIN_HIERARCHY_ARROW_THICKNESS else None
 
 
+def _cross_center(
+    low: float,
+    high: float,
+    thickness: float,
+    child_low: float,
+    child_high: float,
+    margin: float = HIERARCHY_CORNER_MARGIN,
+) -> float:
+    """Cross-section center inside the overlap band, kept off the child's corner.
+
+    Band centering alone hugs the child boundary when the parent/child overlap
+    is a thin sliver at the child's edge. Prefer the band center, but keep at
+    least `margin` of child boundary to each side of the arrow when the band
+    allows; otherwise pull as far toward the child's center as the band
+    permits so the arrow still reads as entering the child, not grazing it.
+    """
+    band_center = (low + high) / 2
+    inset_lo = max(low + thickness / 2, child_low + margin + thickness / 2)
+    inset_hi = min(high - thickness / 2, child_high - margin - thickness / 2)
+    if inset_lo <= inset_hi:
+        return min(max(band_center, inset_lo), inset_hi)
+    child_center = (child_low + child_high) / 2
+    return min(max(child_center, low + thickness / 2), high - thickness / 2)
+
+
 def _root_region(region_id: str, regions: dict) -> str:
     while regions[region_id].get("parent") is not None:
         region_id = regions[region_id]["parent"]
@@ -202,7 +238,7 @@ def _corridor_box(parent: dict, child: dict, side: str) -> dict | None:
             return None
         low, high = overlap
         width = min(HIERARCHY_ARROW_THICKNESS, high - low)
-        x = (low + high - width) / 2
+        x = _cross_center(low, high, width, child["x"], child["x"] + child["w"]) - width / 2
         if side == "north":
             return {"x": x, "y": child["y"] + child["h"], "w": width, "h": parent["y"] - child["y"] - child["h"]}
         return {"x": x, "y": parent["y"] + parent["h"], "w": width, "h": child["y"] - parent["y"] - parent["h"]}
@@ -214,7 +250,7 @@ def _corridor_box(parent: dict, child: dict, side: str) -> dict | None:
         return None
     low, high = overlap
     height = min(HIERARCHY_ARROW_THICKNESS, high - low)
-    y = (low + high - height) / 2
+    y = _cross_center(low, high, height, child["y"], child["y"] + child["h"]) - height / 2
     if side == "west":
         return {"x": child["x"] + child["w"], "y": y, "w": parent["x"] - child["x"] - child["w"], "h": height}
     return {"x": parent["x"] + parent["w"], "y": y, "w": child["x"] - parent["x"] - parent["w"], "h": height}
@@ -439,7 +475,21 @@ def auto_place_expansion_regions(data: dict, layout: dict) -> None:
                         rights = [layout["regions"][item]["x"] + layout["regions"][item]["w"] for item in placed] + [candidate["x"] + candidate["w"]]
                         bottoms = [layout["regions"][item]["y"] + layout["regions"][item]["h"] for item in placed] + [candidate["y"] + candidate["h"]]
                         area = (max(rights) - min(xs)) * (max(bottoms) - min(ys))
-                        score = (0 if side == preferred else 1, area, side_index, alignment_index)
+                        if side in {"north", "south"}:
+                            inset = min(
+                                corridor["x"] - candidate["x"],
+                                candidate["x"] + candidate["w"] - (corridor["x"] + corridor["w"]),
+                            )
+                        else:
+                            inset = min(
+                                corridor["y"] - candidate["y"],
+                                candidate["y"] + candidate["h"] - (corridor["y"] + corridor["h"]),
+                            )
+                        score = (
+                            0 if side == preferred else 1,
+                            0 if inset >= HIERARCHY_CORNER_MARGIN else 1,
+                            area, side_index, alignment_index,
+                        )
                         choices.append((score, side, x, y, corridor))
                 if not choices:
                     if declared.get("mode") == "parent-node":
@@ -569,7 +619,7 @@ def plan_hierarchy_arrows(data: dict, layout: dict) -> dict:
         if horizontal_overlap:
             low, high = horizontal_overlap
             thickness = min(HIERARCHY_ARROW_THICKNESS, high - low)
-            x = (low + high - thickness) / 2
+            x = _cross_center(low, high, thickness, child["x"], child["x"] + child["w"]) - thickness / 2
             up_gap = parent["y"] - (child["y"] + child["h"])
             down_gap = child["y"] - (parent["y"] + parent["h"])
             if up_gap >= MIN_HIERARCHY_ARROW_LENGTH:
@@ -579,7 +629,7 @@ def plan_hierarchy_arrows(data: dict, layout: dict) -> dict:
         if vertical_overlap:
             low, high = vertical_overlap
             thickness = min(HIERARCHY_ARROW_THICKNESS, high - low)
-            y = (low + high - thickness) / 2
+            y = _cross_center(low, high, thickness, child["y"], child["y"] + child["h"]) - thickness / 2
             left_gap = parent["x"] - (child["x"] + child["w"])
             right_gap = child["x"] - (parent["x"] + parent["w"])
             if left_gap >= MIN_HIERARCHY_ARROW_LENGTH:
@@ -632,6 +682,7 @@ def plan_hierarchy_arrows(data: dict, layout: dict) -> dict:
             **({"display_label": attachment["display_label"]} if attachment.get("display_label") else {}),
         }
     _separate_signposts(arrows, region_boxes)
+    finalize_hierarchy_labels(data, layout, arrows)
     return arrows
 
 
@@ -668,6 +719,238 @@ def _separate_signposts(arrows: dict, region_boxes: dict) -> None:
                 continue
             arrow[along] = candidate[along]
             break
+
+
+def _attachment_band(arrow: dict, layout: dict) -> tuple[float, float] | None:
+    """Overlap band constraining a direct arrow's cross-section growth."""
+    if arrow.get("attachment_mode") == "target-signpost":
+        return None
+    boxes = layout["nodes"] if arrow.get("attachment_mode") == "parent-node" else layout["regions"]
+    parent = boxes.get(arrow.get("attachment_id"))
+    child = layout.get("regions", {}).get(arrow.get("child_region"))
+    if parent is None or child is None:
+        return None
+    if arrow["direction"] in {"north", "south"}:
+        return _interval_overlap(parent["x"], parent["x"] + parent["w"], child["x"], child["x"] + child["w"])
+    return _interval_overlap(parent["y"], parent["y"] + parent["h"], child["y"], child["y"] + child["h"])
+
+
+def _recenter_cross_section(arrow: dict, band: tuple[float, float] | None, layout: dict) -> None:
+    if band is None:
+        return
+    child = layout["regions"][arrow["child_region"]]
+    axis, span = ("x", "w") if arrow["direction"] in {"north", "south"} else ("y", "h")
+    center = _cross_center(band[0], band[1], arrow[span], child[axis], child[axis] + child[span])
+    arrow[axis] = round(center - arrow[span] / 2, 2)
+
+
+def _narrow_for_corner(arrow: dict, band: tuple[float, float] | None, layout: dict) -> None:
+    """Trim a label-free arrow's cross-section until the corner margin fits.
+
+    A narrow parent/child overlap band cannot hold the default cross-section
+    plus `HIERARCHY_CORNER_MARGIN` on both sides; centering alone then still
+    grazes the child boundary corner. Only arrows whose label travels beside
+    the shaft can give up thickness, so on-shape arrows are left untouched.
+    """
+    if band is None:
+        return
+    span = "w" if arrow["direction"] in {"north", "south"} else "h"
+    available = round((band[1] - band[0]) - 2 * HIERARCHY_CORNER_MARGIN, 2)
+    if available >= arrow[span] - 1e-6:
+        return
+    if available < MIN_HIERARCHY_ARROW_THICKNESS:
+        return
+    arrow[span] = available
+    _recenter_cross_section(arrow, band, layout)
+
+
+def _fits_on_shape(box: dict, direction: str, ink: tuple[float, float]) -> bool:
+    ink_w, ink_h = ink
+    if ink_w > 0.9 * box["w"] or ink_h > 0.9 * box["h"]:
+        return False
+    area = single_arrow_cell_area(box["w"], box["h"], direction)
+    return (ink_w * ink_h) / max(area, 1.0) <= HIERARCHY_LABEL_MAX_OCCLUSION
+
+
+def _place_beside(
+    edge_id: str, arrow: dict, text: str, font_size: float, layout: dict,
+    arrows: dict | None = None,
+) -> None:
+    """Move the label to the freer shaft flank as a plan-time offset.
+
+    The offset is relative to the arrow box, so project-state corridor
+    overrides keep label and arrow together. An east/west arrow crosses its
+    corridor, so when the corridor is narrower than the label the label runs
+    along the corridor instead: it rotates (`horizontal=0` at compile time)
+    and stacks above or below the shaft inside the corridor width. Sibling
+    arrows and already-placed companion cells count as obstacles, so two
+    expand arrows in the same corridor cannot claim the same flank. A
+    residual overlap is recorded as a finding for the author instead of
+    failing layout silently.
+    """
+    direction = arrow["direction"]
+    wrap_limit = min(max(arrow["w"], arrow["h"]) * 1.5, 320.0)
+    # A flank that is narrower than the label can still hold it when the text
+    # is re-wrapped shorter: try progressively tighter wraps, widest first so
+    # an equally clean place never picks a needlessly thin label.
+    wraps: list[float] = []
+    for factor in (1.0, 0.8, 0.65, 0.5):
+        wrap = max(80.0, max(24.0, wrap_limit) * factor)
+        if all(abs(wrap - seen) > 1.0 for seen in wraps):
+            wraps.append(wrap)
+    candidates = []
+    for wrap in wraps:
+        ink_w, ink_h = wrapped_label_ink(text, font_size, wrap)
+        box_w, box_h = ink_w + 8.0, ink_h + 8.0
+        if direction in {"north", "south"}:
+            for dx in (arrow["w"] + HIERARCHY_LABEL_GAP, -HIERARCHY_LABEL_GAP - box_w):
+                for dy in ((arrow["h"] - box_h) / 2,
+                           arrow["h"] + HIERARCHY_LABEL_GAP,
+                           -HIERARCHY_LABEL_GAP - box_h):
+                    candidates.append({
+                        "dx": dx, "dy": dy, "rotated": False,
+                        "ink": (ink_w, ink_h), "box": (box_w, box_h), "wrap": wrap,
+                    })
+            continue
+        candidates.extend([
+            {"dx": (arrow["w"] - box_w) / 2, "dy": arrow["h"] + HIERARCHY_LABEL_GAP,
+             "rotated": False, "ink": (ink_w, ink_h), "box": (box_w, box_h), "wrap": wrap},
+            {"dx": (arrow["w"] - box_w) / 2, "dy": -HIERARCHY_LABEL_GAP - box_h,
+             "rotated": False, "ink": (ink_w, ink_h), "box": (box_w, box_h), "wrap": wrap},
+        ])
+        # The corridor of an east/west arrow is vertical, so a rotated label
+        # is the only fit when the corridor is narrower than the wrapped ink.
+        # Lines stack across the corridor once rotated.
+        rot_box_w, rot_box_h = ink_h + 8.0, ink_w + 8.0
+        for dy in (arrow["h"] + HIERARCHY_LABEL_GAP, -HIERARCHY_LABEL_GAP - rot_box_h):
+            candidates.append({
+                "dx": (arrow["w"] - rot_box_w) / 2, "dy": dy,
+                "rotated": True, "ink": (ink_w, ink_h), "box": (rot_box_w, rot_box_h),
+                "wrap": wrap,
+            })
+    if direction not in {"north", "south"}:
+        # A single unwrapped line is the last resort for blocks whose wrapped
+        # cross-section still would not fit the corridor.
+        single_w, single_h = wrapped_label_ink(text, font_size, 1e9)
+        if single_w > max(wrapped_label_ink(text, font_size, w)[0] for w in wraps) + 0.01:
+            rot_box_w, rot_box_h = single_h + 8.0, single_w + 8.0
+            for dy in (arrow["h"] + HIERARCHY_LABEL_GAP, -HIERARCHY_LABEL_GAP - rot_box_h):
+                candidates.append({
+                    "dx": (arrow["w"] - rot_box_w) / 2, "dy": dy,
+                    "rotated": True, "ink": (single_w, single_h), "box": (rot_box_w, rot_box_h),
+                    "wrap": 1e9,
+                })
+    obstacles = list(layout.get("regions", {}).values()) + list(layout.get("nodes", {}).values())
+    siblings = arrows if arrows is not None else layout.get("hierarchy_arrows", {})
+    for other_id, other in siblings.items():
+        if other_id == edge_id:
+            continue
+        obstacles.append({"x": other["x"], "y": other["y"], "w": other["w"], "h": other["h"]})
+        ink = other.get("label_ink")
+        offset = other.get("label_offset")
+        if other.get("label_placement") != "beside" or not ink or not offset:
+            continue
+        if other.get("label_rotated"):
+            other_w, other_h = ink[1] + 8.0, ink[0] + 8.0
+        else:
+            other_w, other_h = ink[0] + 8.0, ink[1] + 8.0
+        obstacles.append({
+            "x": other["x"] + offset[0], "y": other["y"] + offset[1],
+            "w": other_w, "h": other_h,
+        })
+
+    def overlap_area(candidate: dict) -> float:
+        bw, bh = candidate["box"]
+        box = {"x": arrow["x"] + candidate["dx"], "y": arrow["y"] + candidate["dy"], "w": bw, "h": bh}
+        return sum(
+            max(0.0, min(box["x"] + bw, other["x"] + other["w"]) - max(box["x"], other["x"]))
+            * max(0.0, min(box["y"] + bh, other["y"] + other["h"]) - max(box["y"], other["y"]))
+            for other in obstacles
+        )
+
+    best = min(enumerate(candidates), key=lambda item: (overlap_area(item[1]), item[0]))[1]
+    arrow["label_placement"] = "beside"
+    arrow["label_offset"] = [round(best["dx"], 2), round(best["dy"], 2)]
+    arrow["label_ink"] = list(best["ink"])
+    if best["rotated"]:
+        arrow["label_rotated"] = True
+        # The renderer rotates one text block, so the compiler needs the same
+        # wrap width the ink estimate used to emit matching explicit breaks.
+        arrow["label_wrap"] = round(best["wrap"], 2)
+    if overlap_area(best) > 0:
+        arrow["placement_warning"] = (
+            f"expand relation {edge_id} beside-label overlaps other geometry; "
+            "adjust the corridor or register an occlusion exception"
+        )
+
+
+def finalize_hierarchy_labels(data: dict, layout: dict, arrows: dict | None = None) -> None:
+    """Decide each arrow's label placement after corridor geometry is final.
+
+    The declared policy comes from project.typography.hierarchy_label_placement
+    (auto | on-shape | beside). auto keeps the label on the arrow when the
+    wrapped ink stays inside the occlusion budget — growing the cross-section
+    within the corridor band when that rescues on-shape placement — and moves
+    the label to a free shaft flank otherwise, so the arrow silhouette stays
+    readable. Forced on-shape keeps the grown arrow even above the budget;
+    the rendered audit then requires an explicit occlusion exception.
+    """
+    typography = resolve_typography(data.get("project", {}).get("typography"))
+    font_size = float(typography["hierarchy_label_font"])
+    policy = typography["hierarchy_label_placement"]
+    arrows = layout.get("hierarchy_arrows", {}) if arrows is None else arrows
+    for edge_id in sorted(arrows):
+        arrow = arrows[edge_id]
+        edge = data.get("edges", {}).get(edge_id, {})
+        child_label = data.get("regions", {}).get(arrow.get("child_region"), {}).get("label", "")
+        text = str(arrow.get("display_label") or edge.get("label") or f"expand {child_label}")
+        text = text.replace("\\n", "\n")
+        direction = arrow["direction"]
+        band = _attachment_band(arrow, layout)
+        thickness_key = "w" if direction in {"north", "south"} else "h"
+        thicknesses = [arrow[thickness_key]]
+        if band is not None:
+            for grown in (128.0, 160.0, 192.0, 256.0):
+                if grown > arrow[thickness_key] and grown - 1 <= band[1] - band[0]:
+                    thicknesses.append(min(grown, band[1] - band[0]))
+        chosen: float | None = None
+        if policy in {"auto", "on-shape"}:
+            for thickness in thicknesses:
+                wrap = thickness if direction in {"north", "south"} else arrow["w"] - 2 * HIERARCHY_LABEL_GAP
+                ink = wrapped_label_ink(text, font_size, max(24.0, wrap))
+                if _fits_on_shape({**arrow, thickness_key: thickness}, direction, ink):
+                    chosen = thickness
+                    break
+        if chosen is not None or policy == "on-shape":
+            arrow[thickness_key] = round(chosen if chosen is not None else thicknesses[-1], 2)
+            _recenter_cross_section(arrow, band, layout)
+            arrow["label_placement"] = "on-shape"
+            continue
+        _narrow_for_corner(arrow, band, layout)
+        _place_beside(edge_id, arrow, text, font_size, layout, arrows)
+
+
+def hierarchy_corridor_findings(data: dict, layout: dict) -> list[str]:
+    """Report direct arrows that hug the child's corner or have residual label overlap."""
+    findings: list[str] = []
+    regions = layout.get("regions", {})
+    for edge_id, arrow in sorted(layout.get("hierarchy_arrows", {}).items()):
+        if arrow.get("attachment_mode") != "target-signpost":
+            child = regions.get(arrow.get("child_region"))
+            if child is not None:
+                if arrow["direction"] in {"north", "south"}:
+                    inset = min(arrow["x"] - child["x"], child["x"] + child["w"] - (arrow["x"] + arrow["w"]))
+                else:
+                    inset = min(arrow["y"] - child["y"], child["y"] + child["h"] - (arrow["y"] + arrow["h"]))
+                if inset + 1 < HIERARCHY_CORNER_MARGIN:
+                    findings.append(
+                        f"{edge_id}: arrow hugs the child boundary corner "
+                        f"(inset {inset:.1f}px < {HIERARCHY_CORNER_MARGIN:g}px); "
+                        "widen the overlap band or move the child region"
+                    )
+        if arrow.get("placement_warning"):
+            findings.append(arrow["placement_warning"])
+    return findings
 
 
 def _center(box: dict) -> tuple[float, float]:
@@ -839,6 +1122,8 @@ def main() -> int:
     )
     for finding in hierarchy_attribution_findings(data, output):
         print(f"WARNING: hierarchy attribution: {finding}")
+    for finding in hierarchy_corridor_findings(data, output):
+        print(f"WARNING: hierarchy corridor: {finding}")
     return 0
 
 

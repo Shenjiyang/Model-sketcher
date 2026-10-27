@@ -6,6 +6,27 @@ from __future__ import annotations
 
 Point = tuple[float, float]
 
+# Style ratios emitted by compile_drawio.HIERARCHY_ARROW_STYLE.
+COMPILED_ARROW_WIDTH_RATIO = 0.52
+COMPILED_ARROW_SIZE_RATIO = 0.38
+
+
+def polygon_area(points: list[Point]) -> float:
+    area = 0.0
+    for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1]):
+        area += x0 * y1 - x1 * y0
+    return abs(area) / 2.0
+
+
+def single_arrow_cell_area(
+    width: float,
+    height: float,
+    direction: str,
+    arrow_width: float = COMPILED_ARROW_WIDTH_RATIO,
+    arrow_size: float = COMPILED_ARROW_SIZE_RATIO,
+) -> float:
+    return polygon_area(single_arrow_polygon(0.0, 0.0, width, height, direction, arrow_width, arrow_size))
+
 
 def single_arrow_polygon(
     x: float,
