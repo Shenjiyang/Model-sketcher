@@ -337,14 +337,15 @@ def validate_hierarchy_arrow_geometry(data: dict, layout: dict) -> list[str]:
                 if declared_mode == "owner-region-boundary" else edge["source"]
             )
             mode_matches = attachment_mode == declared_mode or (
-                declared_mode == "owner-region-boundary" and attachment_mode == "target-signpost"
+                declared_mode == "owner-region-boundary"
+                and attachment_mode in {"target-signpost", "source-signpost"}
             )
             if not mode_matches or attachment_id != declared_id:
                 errors.append(f"expand relation {edge_id} resolved attachment differs from its explicit IR contract")
         elif attachment_mode == "parent-node":
             if attachment_id != edge["source"]:
                 errors.append(f"expand relation {edge_id} parent-node attachment is not its semantic parent")
-        elif attachment_mode in {"owner-region-boundary", "target-signpost"}:
+        elif attachment_mode in {"owner-region-boundary", "target-signpost", "source-signpost"}:
             source_region = data["nodes"][edge["source"]]["region"]
             cursor = source_region
             owners: set[str] = set()
@@ -356,13 +357,21 @@ def validate_hierarchy_arrow_geometry(data: dict, layout: dict) -> list[str]:
             anchor_label = arrow.get("anchor_label")
             if not isinstance(anchor_label, str) or not anchor_label.strip():
                 errors.append(f"expand relation {edge_id} automatic egress lacks an anchor label")
-            elif anchor_label.casefold() not in str(arrow.get("display_label") or edge.get("label", "")).casefold():
-                errors.append(f"expand relation {edge_id} expansion label does not name its automatic egress")
+            else:
+                visible = str(arrow.get("display_label") or edge.get("label", "")).casefold()
+                # A source signpost is anchored on the owner itself, so naming
+                # the distant child is what orients the reader; the anchor name
+                # may be dropped in favour of the child region title.
+                names = [anchor_label]
+                if attachment_mode == "source-signpost":
+                    names.append(str(data["regions"][child_region_id]["label"]))
+                if not any(name.strip() and name.casefold() in visible for name in names):
+                    errors.append(f"expand relation {edge_id} expansion label does not name its automatic egress")
         else:
             errors.append(f"expand relation {edge_id} has invalid resolved attachment mode")
         parent = (
             region_boxes.get(attachment_id)
-            if attachment_mode in {"owner-region-boundary", "target-signpost"}
+            if attachment_mode in {"owner-region-boundary", "target-signpost", "source-signpost"}
             else node_boxes.get(attachment_id)
         )
         child = region_boxes.get(child_region_id)
@@ -401,9 +410,26 @@ def validate_hierarchy_arrow_geometry(data: dict, layout: dict) -> list[str]:
             child_overlap = min(y + height, child["y"] + child["h"]) - max(y, child["y"])
             center = y + height / 2
             center_attached = parent["y"] - 1 <= center <= parent["y"] + parent["h"] + 1 and child["y"] - 1 <= center <= child["y"] + child["h"] + 1
-        if attachment_mode == "target-signpost":
-            if child_overlap <= 1:
+        if attachment_mode in {"target-signpost", "source-signpost"}:
+            if attachment_mode == "target-signpost" and child_overlap <= 1:
                 errors.append(f"expand relation {edge_id} target signpost misses the child corridor")
+            if attachment_mode == "source-signpost":
+                parent_span = (
+                    parent["x"] - 1 <= center <= parent["x"] + parent["w"] + 1
+                    if direction in {"north", "south"}
+                    else parent["y"] - 1 <= center <= parent["y"] + parent["h"] + 1
+                )
+                if parent_overlap <= 1 or not parent_span:
+                    errors.append(
+                        f"expand relation {edge_id} source signpost misses the owner boundary it anchors to"
+                    )
+                if (
+                    min(x + width, child["x"] + child["w"]) - max(x, child["x"]) > 1
+                    and min(y + height, child["y"] + child["h"]) - max(y, child["y"]) > 1
+                ):
+                    errors.append(
+                        f"expand relation {edge_id} source signpost reaches the child instead of pointing at it"
+                    )
             parent_center = (parent["x"] + parent["w"] / 2, parent["y"] + parent["h"] / 2)
             child_center = (child["x"] + child["w"] / 2, child["y"] + child["h"] / 2)
             points_toward_child = {
@@ -413,20 +439,22 @@ def validate_hierarchy_arrow_geometry(data: dict, layout: dict) -> list[str]:
                 "north": child_center[1] < parent_center[1],
             }[direction]
             if not points_toward_child:
-                errors.append(f"expand relation {edge_id} target signpost points away from its child")
+                errors.append(f"expand relation {edge_id} {attachment_mode.replace(chr(45), chr(32))} points away from its child")
             for region_id, region in region_boxes.items():
                 if region_id == child_region_id:
+                    continue
+                if attachment_mode == "source-signpost" and region_id == attachment_id:
                     continue
                 overlap_w = min(x + width, region["x"] + region["w"]) - max(x, region["x"])
                 overlap_h = min(y + height, region["y"] + region["h"]) - max(y, region["y"])
                 if overlap_w > 1 and overlap_h > 1:
-                    errors.append(f"expand relation {edge_id} target signpost overlaps region {region_id}")
+                    errors.append(f"expand relation {edge_id} {attachment_mode.replace(chr(45), chr(32))} overlaps region {region_id}")
         elif parent_overlap <= 1 or child_overlap <= 1 or not center_attached:
             errors.append(f"expand relation {edge_id} hierarchy arrow misses the attachment or child corridor")
         actual_tail, expected_tail, actual_tip, expected_tip = checks[direction]
         if attachment_mode != "target-signpost" and abs(actual_tail - expected_tail) > 1:
             errors.append(f"expand relation {edge_id} hierarchy tail is detached")
-        if abs(actual_tip - expected_tip) > 1:
+        if attachment_mode != "source-signpost" and abs(actual_tip - expected_tip) > 1:
             errors.append(f"expand relation {edge_id} hierarchy tip is detached")
     return errors
 

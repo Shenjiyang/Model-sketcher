@@ -28,6 +28,12 @@ MIN_HIERARCHY_ARROW_LENGTH = 48.0
 MAX_HIERARCHY_ARROW_ASPECT_RATIO = 6.0
 EXPANSION_GAP = 120.0
 EXPANSION_REGION_GUTTER = 72.0
+# A target signpost stands in the gap on the far side of its child. That reads
+# as "the named parent expands into this child" only when some visible frame
+# backs the tail; in open whitespace the same arrow reads as detached. When no
+# other box sits within this distance of the signpost, the planner anchors the
+# arrow at the owner instead (`source-signpost`).
+SIGNPOST_GROUNDING_GAP = EXPANSION_REGION_GUTTER
 HIERARCHY_SIDES = ("north", "east", "west", "south")
 # Minimum arrow-edge to child-boundary distance along the corridor axis. A
 # cross-section centered in a thin overlap band otherwise hugs the child's
@@ -64,6 +70,18 @@ def hierarchy_display_label(anchor_label: str, edge_label: str) -> str:
         # "Vision Block x27" already names the "Vision Block" child.
         return anchor_label
     return f"{anchor_label} -> {edge_label}"
+
+
+def _source_signpost_label(edge_label: str, anchor_label: str, child_title: str) -> str:
+    """Name the target detail in an arrow whose tail sits on the owner."""
+    if not child_title:
+        return edge_label or anchor_label
+    if anchor_label and anchor_label.casefold() in edge_label.casefold():
+        start = edge_label.casefold().index(anchor_label.casefold())
+        return edge_label[:start] + child_title + edge_label[start + len(anchor_label):]
+    if child_title.casefold() in edge_label.casefold():
+        return edge_label
+    return f"{edge_label} -> {child_title}" if edge_label else child_title
 
 
 def node_size(node: dict, font_size: float = 18.0) -> tuple[float, float]:
@@ -265,6 +283,87 @@ def _signpost_box(child: dict, side: str) -> dict:
     if side == "west":
         return {"x": child["x"] + child["w"], "y": child["y"] + (child["h"] - HIERARCHY_ARROW_THICKNESS) / 2, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
     return {"x": child["x"] - EXPANSION_GAP, "y": child["y"] + (child["h"] - HIERARCHY_ARROW_THICKNESS) / 2, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
+
+
+def _source_signpost_box(owner: dict, direction: str, position: float) -> dict:
+    """Block arrow leaving the owning region toward the child's bearing.
+
+    The tail sits on the owner boundary, so the arrow always has a visible
+    source frame behind it. The tip stops one expansion gap away instead of
+    pretending to reach a child that is thousands of pixels off.
+    """
+    if direction in {"north", "south"}:
+        y = owner["y"] - EXPANSION_GAP if direction == "north" else owner["y"] + owner["h"]
+        return {"x": position, "y": y, "w": HIERARCHY_ARROW_THICKNESS, "h": EXPANSION_GAP}
+    x = owner["x"] - EXPANSION_GAP if direction == "west" else owner["x"] + owner["w"]
+    return {"x": x, "y": position, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
+
+
+def _signpost_axis_positions(owner: dict, node: dict, direction: str) -> list[float]:
+    """Cross-axis slots on the owner edge, aligned with the parent block first."""
+    span, along = ("w", "x") if direction in {"north", "south"} else ("h", "y")
+    thickness = HIERARCHY_ARROW_THICKNESS
+    low = owner[along]
+    high = owner[along] + owner[span] - thickness
+    if high < low:
+        return [round(low, 2)]
+    aligned = node[along] + node[span] / 2 - thickness / 2
+    centred = owner[along] + owner[span] / 2 - thickness / 2
+    steps = max(1, int((high - low) // 24))
+    sweep = [low + (high - low) * index / steps for index in range(steps + 1)]
+    sweep.sort(key=lambda value: abs(value - aligned))
+    candidates = [value for value in [aligned, centred, *sweep] if low - 1e-6 <= value <= high + 1e-6]
+    return list(dict.fromkeys(round(value, 2) for value in candidates))
+
+
+def _backs_the_tail(box: dict, direction: str, other: dict, gap: float) -> bool:
+    """True when `other` sits behind the tail of `box` on its cross-axis span.
+
+    Content on the tip side, including the child's own nodes, does not count:
+    it is what the arrow points at, not what the arrow comes from.
+    """
+    if direction == "north":
+        behind = other["y"] - (box["y"] + box["h"])
+        overlap = min(box["x"] + box["w"], other["x"] + other["w"]) - max(box["x"], other["x"])
+    elif direction == "south":
+        behind = box["y"] - (other["y"] + other["h"])
+        overlap = min(box["x"] + box["w"], other["x"] + other["w"]) - max(box["x"], other["x"])
+    elif direction == "east":
+        behind = box["x"] - (other["x"] + other["w"])
+        overlap = min(box["y"] + box["h"], other["y"] + other["h"]) - max(box["y"], other["y"])
+    else:
+        behind = other["x"] - (box["x"] + box["w"])
+        overlap = min(box["y"] + box["h"], other["y"] + other["h"]) - max(box["y"], other["y"])
+    return -1e-6 <= behind <= gap and overlap > 0
+
+
+def _signpost_grounded(box: dict, direction: str, child_region_id: str,
+                       region_boxes: dict, node_boxes: dict) -> bool:
+    """True when visible geometry backs a target signpost's tail side.
+
+    Without that backing the arrow stands in open whitespace: the reader can
+    see neither its origin nor anything it belongs to.
+    """
+    boxes = [box_ for region_id, box_ in region_boxes.items() if region_id != child_region_id]
+    boxes += list(node_boxes.values())
+    return any(_backs_the_tail(box, direction, other, SIGNPOST_GROUNDING_GAP) for other in boxes)
+
+
+def _source_signpost_slot(owner: dict, node: dict, child: dict, directions: list[str],
+                          region_boxes: dict, node_boxes: dict,
+                          ignore: set[str]) -> tuple[str, dict] | None:
+    """First clear owner-edge slot in bearing order, or None."""
+    gap = 8.0
+    for direction in directions:
+        for position in _signpost_axis_positions(owner, node, direction):
+            box = _source_signpost_box(owner, direction, position)
+            if any(region_id not in ignore and _boxes_collide(box, other, gap)
+                   for region_id, other in region_boxes.items()):
+                continue
+            if any(_boxes_collide(box, other, gap) for other in node_boxes.values()):
+                continue
+            return direction, box
+    return None
 
 
 def _signpost_slots(side: str, parent: dict, source: dict, child: dict,
@@ -568,7 +667,7 @@ def hierarchy_attachment(edge_id: str, edge: dict, layout: dict) -> tuple[str, s
     resolved = layout.get("hierarchy_attachments", {}).get(edge_id)
     attachment = resolved or edge.get("visual_attachment") or {}
     mode = attachment.get("mode", "parent-node")
-    if mode in {"owner-region-boundary", "target-signpost"}:
+    if mode in {"owner-region-boundary", "target-signpost", "source-signpost"}:
         attachment_id = attachment.get("id", attachment.get("region"))
         return mode, attachment_id, layout["regions"][attachment_id], attachment
     attachment_id = edge["source"]
@@ -643,8 +742,8 @@ def plan_hierarchy_arrows(data: dict, layout: dict) -> dict:
 
         if not candidates:
             # No straight corridor. Do not fail the planner; keep the semantic
-            # parent and place a registered signpost next to the child. Compile
-            # still rejects a signpost that misses the child or covers another region.
+            # parent and place a registered signpost. Compile still rejects a
+            # signpost that misses its anchor or covers another region.
             dx = (child["x"] + child["w"] / 2) - (parent["x"] + parent["w"] / 2)
             dy = (child["y"] + child["h"] / 2) - (parent["y"] + parent["h"] / 2)
             direction = ("east" if dx >= 0 else "west") if abs(dx) >= abs(dy) else ("south" if dy >= 0 else "north")
@@ -656,10 +755,42 @@ def plan_hierarchy_arrows(data: dict, layout: dict) -> dict:
                 box = {"x": child["x"] + child["w"], "y": child["y"] + (child["h"] - HIERARCHY_ARROW_THICKNESS) * fraction, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
             else:
                 box = {"x": child["x"] - EXPANSION_GAP, "y": child["y"] + (child["h"] - HIERARCHY_ARROW_THICKNESS) * fraction, "w": EXPANSION_GAP, "h": HIERARCHY_ARROW_THICKNESS}
-            owner = attachment.get("region", data["nodes"][source_id]["region"])
+            owner = attachment.get("region") or attachment.get("id") or data["nodes"][source_id]["region"]
             anchor = attachment.get("anchor_label") or semantic_anchor_label(
                 data["nodes"][source_id], source_id
             )
+            if not _signpost_grounded(box, direction, child_region_id, region_boxes, node_boxes):
+                # The child-side gap is open canvas, so a target signpost would
+                # float with nothing at its tail. Anchor the arrow at the owner
+                # region instead and name the child detail it expands into;
+                # only fall back to the target side when every owner edge is
+                # obstructed.
+                owner_box = region_boxes.get(owner)
+                node_box = node_boxes.get(source_id)
+                if owner_box is not None and node_box is not None:
+                    opposite = {"north": "south", "south": "north", "east": "west", "west": "east"}
+                    vertical = "north" if dy < 0 else "south"
+                    horizontal = "east" if dx >= 0 else "west"
+                    bearing = ([vertical, horizontal] if abs(dy) >= abs(dx) else [horizontal, vertical])
+                    directions = [bearing[0], bearing[1], opposite[bearing[1]], opposite[bearing[0]]]
+                    slot = _source_signpost_slot(
+                        owner_box, node_box, child, directions,
+                        region_boxes, node_boxes, {owner, child_region_id},
+                    )
+                    if slot is not None:
+                        direction, box = slot
+                        child_title = str(data["regions"].get(child_region_id, {}).get("label", ""))
+                        arrows[edge_id] = {
+                            **{key: round(value, 2) for key, value in box.items()},
+                            "direction": direction, "parent": source_id,
+                            "attachment_mode": "source-signpost", "attachment_id": owner,
+                            "child_region": child_region_id, "anchor_label": anchor,
+                            # The tail is attached to the owner, so the visible text
+                            # must name where the arrow goes: swap the anchor name
+                            # for the child's own title, keeping the edge's verb.
+                            "display_label": _source_signpost_label(str(edge["label"]), anchor, child_title),
+                        }
+                        continue
             arrows[edge_id] = {**{key: round(value, 2) for key, value in box.items()}, "direction": direction,
                 "parent": source_id, "attachment_mode": "target-signpost", "attachment_id": owner,
                 "child_region": child_region_id, "anchor_label": anchor,
@@ -686,49 +817,62 @@ def plan_hierarchy_arrows(data: dict, layout: dict) -> dict:
 
 
 def _spread_signposts(arrows: dict, region_boxes: dict) -> None:
-    """Share one child edge among the signposts that land on it.
+    """Share one anchor edge among the signposts that land on it.
 
-    A corridor arrow onto a different side of the same child does not compete
-    for a slot on this edge, so it must not shift this signpost away from the
-    child's centre.
+    A direct corridor arrow onto a different side of the same anchor does not
+    compete for a slot on this edge, so it must not shift this signpost away
+    from the anchor's centre. Target signposts share their child's edge;
+    source signposts share the owner region's edge.
     """
     groups: dict[tuple[str, str], list[str]] = {}
     for edge_id in sorted(arrows):
         arrow = arrows[edge_id]
-        if arrow.get("attachment_mode") == "target-signpost":
-            groups.setdefault((arrow["child_region"], arrow["direction"]), []).append(edge_id)
-    for (child_region, direction), edge_ids in groups.items():
+        mode = arrow.get("attachment_mode")
+        if mode == "target-signpost":
+            key = (arrow["child_region"], arrow["direction"])
+        elif mode == "source-signpost":
+            key = (arrow["attachment_id"], arrow["direction"])
+        else:
+            continue
+        groups.setdefault(key, []).append(edge_id)
+    for (anchor_region, direction), edge_ids in groups.items():
         if len(edge_ids) < 2:
             continue
-        child = region_boxes[child_region]
+        anchor = region_boxes[anchor_region]
         for index, edge_id in enumerate(edge_ids):
             arrow = arrows[edge_id]
             fraction = 0.25 + 0.5 * index / (len(edge_ids) - 1)
             if direction in {"north", "south"}:
-                arrow["x"] = round(child["x"] + (child["w"] - arrow["w"]) * fraction, 2)
+                arrow["x"] = round(anchor["x"] + (anchor["w"] - arrow["w"]) * fraction, 2)
             else:
-                arrow["y"] = round(child["y"] + (child["h"] - arrow["h"]) * fraction, 2)
+                arrow["y"] = round(anchor["y"] + (anchor["h"] - arrow["h"]) * fraction, 2)
 
 
 def _separate_signposts(arrows: dict, region_boxes: dict) -> None:
-    """Slide a signpost along its child edge off any other hierarchy arrow.
+    """Slide a signpost along its anchor edge off any other hierarchy arrow.
 
     Direct arrows are fixed by their corridor, but a signpost only has to touch
-    its child, so it can move along that edge. A child shared by two parents is
+    its anchor, so it can move along that edge. A child shared by two parents is
     where a signpost otherwise lands on the other parent's arrow.
     """
     gap = 8.0
     for edge_id in sorted(arrows):
         arrow = arrows[edge_id]
-        if arrow.get("attachment_mode") != "target-signpost":
+        mode = arrow.get("attachment_mode")
+        if mode == "target-signpost":
+            anchor = region_boxes[arrow["child_region"]]
+            excluded = {arrow["child_region"]}
+        elif mode == "source-signpost":
+            anchor = region_boxes[arrow["attachment_id"]]
+            excluded = {arrow["attachment_id"], arrow["child_region"]}
+        else:
             continue
         others = [box for other_id, box in arrows.items() if other_id != edge_id]
         if not any(_boxes_collide(arrow, box, gap) for box in others):
             continue
-        child = region_boxes[arrow["child_region"]]
         along = "x" if arrow["direction"] in {"north", "south"} else "y"
         span = "w" if along == "x" else "h"
-        low, high = child[along], child[along] + child[span] - arrow[span]
+        low, high = anchor[along], anchor[along] + anchor[span] - arrow[span]
         if high < low:
             continue
         steps = max(1, int((high - low) // 12))
@@ -738,7 +882,7 @@ def _separate_signposts(arrows: dict, region_boxes: dict) -> None:
             candidate = {**arrow, along: round(value, 2)}
             if any(_boxes_collide(candidate, box, gap) for box in others):
                 continue
-            if any(region_id != arrow["child_region"] and _boxes_collide(candidate, box, 0.0)
+            if any(region_id not in excluded and _boxes_collide(candidate, box, 0.0)
                    for region_id, box in region_boxes.items()):
                 continue
             arrow[along] = candidate[along]
@@ -747,7 +891,7 @@ def _separate_signposts(arrows: dict, region_boxes: dict) -> None:
 
 def _attachment_band(arrow: dict, layout: dict) -> tuple[float, float] | None:
     """Overlap band constraining a direct arrow's cross-section growth."""
-    if arrow.get("attachment_mode") == "target-signpost":
+    if arrow.get("attachment_mode") in {"target-signpost", "source-signpost"}:
         return None
     boxes = layout["nodes"] if arrow.get("attachment_mode") == "parent-node" else layout["regions"]
     parent = boxes.get(arrow.get("attachment_id"))
@@ -959,7 +1103,7 @@ def hierarchy_corridor_findings(data: dict, layout: dict) -> list[str]:
     findings: list[str] = []
     regions = layout.get("regions", {})
     for edge_id, arrow in sorted(layout.get("hierarchy_arrows", {}).items()):
-        if arrow.get("attachment_mode") != "target-signpost":
+        if arrow.get("attachment_mode") not in {"target-signpost", "source-signpost"}:
             child = regions.get(arrow.get("child_region"))
             if child is not None:
                 if arrow["direction"] in {"north", "south"}:

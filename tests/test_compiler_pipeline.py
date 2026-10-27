@@ -1699,10 +1699,15 @@ class CompilerPipelineTest(unittest.TestCase):
             "regions": {"parent": {"x": 0, "y": 0, "w": 100, "h": 100}, "detail": {"x": 200, "y": 200, "w": 120, "h": 120}},
         }
         arrow = plan_hierarchy_arrows(data, layout)["expand_detail"]
-        self.assertEqual(arrow["attachment_mode"], "target-signpost")
+        # No frame backs a child-side signpost in this world, so the arrow keeps
+        # its tail on the owner and points south toward the child.
+        self.assertEqual(arrow["attachment_mode"], "source-signpost")
         self.assertEqual(arrow["parent"], "parent")
+        self.assertEqual(arrow["attachment_id"], "parent")
         self.assertEqual(arrow["child_region"], "detail")
         self.assertEqual(arrow["anchor_label"], "Parent definition")
+        self.assertEqual(arrow["direction"], "south")
+        self.assertAlmostEqual(arrow["y"], 100.0, places=2)
         self.assertEqual(validate_hierarchy_arrow_geometry(data, layout | {"hierarchy_arrows": {"expand_detail": arrow}}), [])
 
     def test_signpost_slides_off_another_arrow_into_a_shared_child(self):

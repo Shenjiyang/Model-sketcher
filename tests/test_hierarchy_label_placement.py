@@ -330,6 +330,10 @@ class SignpostSharingTests(unittest.TestCase):
             "regions": {
                 "child": {"x": 2000.0, "y": 0.0, "w": 1000.0, "h": 600.0},
                 "west-corridor": {"x": 1400.0, "y": 0.0, "w": 480.0, "h": 600.0},
+                # Visible content behind the signpost's tail. Without it the
+                # arrow would stand in open whitespace and the planner anchors
+                # it at the owner instead (source-signpost).
+                "ground": {"x": 2500.0, "y": 750.0, "w": 200.0, "h": 150.0},
                 **far_regions,
             },
         }
@@ -372,6 +376,62 @@ class SignpostSharingTests(unittest.TestCase):
         self.assertEqual({first["direction"], second["direction"]}, {"north"})
         self.assertAlmostEqual(first["x"], 2000.0 + 904.0 * 0.25, places=2)
         self.assertAlmostEqual(second["x"], 2000.0 + 904.0 * 0.75, places=2)
+
+
+class SourceSignpostTests(unittest.TestCase):
+    """An ungrounded target slot moves the arrow to the owner region."""
+
+    def _world(self, *, ground: dict | None = None) -> tuple[dict, dict]:
+        data = {
+            "nodes": {
+                "parent_node": {"label": "parent", "region": "owner"},
+                "child_node": {"label": "child", "region": "child"},
+            },
+            "regions": {
+                "owner": {"label": "Owner Region"},
+                "child": {"label": "Child Detail"},
+            },
+            "edges": {
+                "e_expand": {"kind": "expand", "source": "parent_node",
+                             "target": "child_node", "label": "expands the parent"},
+            },
+        }
+        layout = {
+            "nodes": {
+                "parent_node": {"x": 200.0, "y": 2200.0, "w": 100.0, "h": 60.0},
+                "child_node": {"x": 900.0, "y": -400.0, "w": 200.0, "h": 60.0},
+            },
+            "regions": {
+                "owner": {"x": 0.0, "y": 2000.0, "w": 500.0, "h": 500.0},
+                "child": {"x": 500.0, "y": -500.0, "w": 1000.0, "h": 600.0},
+            },
+        }
+        if ground is not None:
+            layout["regions"]["ground"] = ground
+        return data, layout
+
+    def test_ungrounded_child_slot_anchors_the_arrow_at_the_owner(self) -> None:
+        data, layout = self._world()
+        arrows = plan_hierarchy_arrows(data, layout)
+        arrow = arrows["e_expand"]
+        self.assertEqual(arrow["attachment_mode"], "source-signpost")
+        self.assertEqual(arrow["attachment_id"], "owner")
+        # The child is mostly above the owner, so the arrow leaves the north
+        # edge, aligned with the semantic parent block.
+        self.assertEqual(arrow["direction"], "north")
+        self.assertAlmostEqual(arrow["y"] + arrow["h"], 2000.0, places=2)
+        self.assertAlmostEqual(arrow["x"] + arrow["w"] / 2, 250.0, places=2)
+        # The label names the detail the arrow expands into, which is the only
+        # way for a reader to find the distant child; the edge's verb survives
+        # while the anchor name is replaced by the target title.
+        self.assertEqual(arrow["display_label"], "expands the Child Detail")
+
+    def test_grounded_child_slot_keeps_the_target_signpost(self) -> None:
+        # A frame 30px behind the tail makes the child-side arrow legible, so
+        # the planner leaves it at the child.
+        data, layout = self._world(ground={"x": 1000.0, "y": 250.0, "w": 200.0, "h": 150.0})
+        arrows = plan_hierarchy_arrows(data, layout)
+        self.assertEqual(arrows["e_expand"]["attachment_mode"], "target-signpost")
 
 
 class ArrowAreaTests(unittest.TestCase):

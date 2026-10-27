@@ -156,14 +156,19 @@ def build_manifest(data: dict, layout: dict | None = None) -> dict:
             "attachment_mode": layout["hierarchy_arrows"][edge_id]["attachment_mode"],
             "attachment": (
                 f"region:{layout['hierarchy_arrows'][edge_id]['attachment_id']}"
-                if layout["hierarchy_arrows"][edge_id]["attachment_mode"] in {"owner-region-boundary", "target-signpost"}
+                if layout["hierarchy_arrows"][edge_id]["attachment_mode"] in {"owner-region-boundary", "target-signpost", "source-signpost"}
                 else f"node:{layout['hierarchy_arrows'][edge_id]['attachment_id']}"
             ),
             "child": f"region:{data['nodes'][edge['target']]['region']}",
             "direction": audit_direction[layout["hierarchy_arrows"][edge_id]["direction"]],
             **(
-                {"anchor_label": layout["hierarchy_arrows"][edge_id]["anchor_label"]}
-                if layout["hierarchy_arrows"][edge_id].get("attachment_mode") in {"owner-region-boundary", "target-signpost"}
+                {
+                    "anchor_label": layout["hierarchy_arrows"][edge_id]["anchor_label"],
+                    # A source signpost stands next to its owner, so its label
+                    # names the distant child instead of repeating the anchor.
+                    "target_label": data["regions"][data["nodes"][edge["target"]]["region"]]["label"],
+                }
+                if layout["hierarchy_arrows"][edge_id].get("attachment_mode") in {"owner-region-boundary", "target-signpost", "source-signpost"}
                 else {}
             ),
         }

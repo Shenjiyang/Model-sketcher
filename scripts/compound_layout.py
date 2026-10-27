@@ -231,6 +231,13 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
             with phase('hierarchy planning'):
                 layout['hierarchy_arrows'] = plan_hierarchy_arrows(data, layout)
                 apply_hierarchy_arrow_overrides(layout, state)
+        # A reused base carries its routes but not the junction/line-jump
+        # registry: those are derived from the final routes. Re-deriving them
+        # here keeps a reused layout certifiable exactly like a fresh one,
+        # instead of silently dropping approved bridges on the audit manifest.
+        layout = normalize_junctions(data, layout)
+        with phase('isolated line jumps'):
+            plan_compound_line_jumps(data, layout, layout.get('edge_label_boxes', {}))
         verify_ports(data, layout, hints)
         return layout
     typography = resolve_typography(data['project'].get('typography'))
@@ -299,6 +306,10 @@ def plan_compound(data, architecture_sha256, state=None, defer_hierarchy_arrows=
         'region_titles': {rid: region_title_layout(data['regions'][rid]['label'], box['w'], title_font)
                           for rid, box in regions.items()},
         'hierarchy_arrows': {}, 'hierarchy_attachments': {},
+        # Label footprints are ELK-reserved geometry. Keep them with the layout
+        # so a later reuse run can re-derive line-jump clearances without a Node
+        # pass; x/y go stale when labels move, w/h are what the planner reads.
+        'edge_label_boxes': deepcopy(elk_label_boxes),
         'canvas': {'width': math.ceil(raw['width'] + 40), 'height': math.ceil(raw['height'] + 40)},
         'layout_engine': {'name': 'compound-elk-layered', 'elkjs_version': result['engine']['elkjsVersion'],
                           **({'layout_hints': deepcopy(hints)} if hints else {}),

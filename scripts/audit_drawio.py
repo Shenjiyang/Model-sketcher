@@ -2875,7 +2875,7 @@ class PageAudit:
             if attachment_mode == "parent-node":
                 if attachment_id != semantic_parent_id:
                     self.fail(f"parent-node hierarchy attachment differs from semantic parent: {arrow_id}")
-            elif attachment_mode in {"owner-region-boundary", "target-signpost"}:
+            elif attachment_mode in {"owner-region-boundary", "target-signpost", "source-signpost"}:
                 owned = set(self.config.get("region_content_contracts", {}).get(attachment_id, []))
                 if attachment_id not in region_ids or semantic_parent_id not in owned:
                     self.fail(f"hierarchy attachment region does not own semantic parent: {arrow_id}")
@@ -2883,8 +2883,14 @@ class PageAudit:
                 visible_label = label_text
                 if not isinstance(anchor_label, str) or not anchor_label.strip():
                     self.fail(f"region-owned hierarchy attachment lacks anchor label: {arrow_id}")
-                elif anchor_label.casefold() not in visible_label.casefold():
-                    self.fail(f"hierarchy arrow label does not name its semantic anchor: {arrow_id}")
+                else:
+                    # A source signpost is anchored on the owner, so it may name
+                    # the distant child region instead of repeating the anchor.
+                    names = [anchor_label]
+                    if attachment_mode == "source-signpost":
+                        names.append(str(anchor.get("target_label") or ""))
+                    if not any(name.strip() and name.casefold() in visible_label.casefold() for name in names):
+                        self.fail(f"hierarchy arrow label does not name its semantic anchor: {arrow_id}")
             else:
                 self.fail(f"invalid hierarchy attachment mode: {arrow_id} -> {attachment_mode!r}")
             style = self.styles.get(arrow_id, {})
@@ -2938,9 +2944,26 @@ class PageAudit:
                 child_overlap = min(arrow.bottom, child.bottom) - max(arrow.y, child.y)
                 center = arrow.y + arrow.h / 2
                 center_attached = parent.y - tolerance <= center <= parent.bottom + tolerance and child.y - tolerance <= center <= child.bottom + tolerance
-            if attachment_mode == "target-signpost":
-                if child_overlap <= tolerance:
+            if attachment_mode in {"target-signpost", "source-signpost"}:
+                if attachment_mode == "target-signpost" and child_overlap <= tolerance:
                     self.fail(f"hierarchy target signpost misses the child corridor: {arrow_id}")
+                if attachment_mode == "source-signpost":
+                    parent_span = (
+                        parent.x - tolerance <= center <= parent.right + tolerance
+                        if direction in {"up", "down"}
+                        else parent.y - tolerance <= center <= parent.bottom + tolerance
+                    )
+                    if parent_overlap <= tolerance or not parent_span:
+                        self.fail(
+                            f"hierarchy source signpost misses the owner boundary it anchors to: {arrow_id}"
+                        )
+                    if (
+                        min(arrow.right, child.right) - max(arrow.x, child.x) > tolerance
+                        and min(arrow.bottom, child.bottom) - max(arrow.y, child.y) > tolerance
+                    ):
+                        self.fail(
+                            f"hierarchy source signpost reaches the child instead of pointing at it: {arrow_id}"
+                        )
                 parent_center = (parent.x + parent.w / 2, parent.y + parent.h / 2)
                 child_center = (child.x + child.w / 2, child.y + child.h / 2)
                 points_toward_child = {
@@ -2950,25 +2973,28 @@ class PageAudit:
                     "up": child_center[1] < parent_center[1],
                 }[direction]
                 if not points_toward_child:
-                    self.fail(f"hierarchy target signpost points away from its child: {arrow_id}")
+                    self.fail(f"hierarchy {attachment_mode.replace(chr(45), chr(32))} points away from its child: {arrow_id}")
             elif parent_overlap <= tolerance or child_overlap <= tolerance or not center_attached:
                 self.fail(f"hierarchy arrow misses the attachment or child corridor: {arrow_id}")
             actual_tail, expected_tail, actual_tip, expected_tip = checks[direction]
             if attachment_mode != "target-signpost" and abs(actual_tail - expected_tail) > tolerance:
                 self.fail(f"hierarchy tail detached: {arrow_id} ({actual_tail:g} != {expected_tail:g})")
-            if abs(actual_tip - expected_tip) > tolerance:
+            if attachment_mode != "source-signpost" and abs(actual_tip - expected_tip) > tolerance:
                 self.fail(f"hierarchy tip detached: {arrow_id} ({actual_tip:g} != {expected_tip:g})")
             if not label_text.strip():
                 self.fail(f"hierarchy arrow missing label: {arrow_id}")
-            if attachment_mode == "target-signpost":
-                for region_id in region_ids - {anchor.get("child", "")}:
+            if attachment_mode in {"target-signpost", "source-signpost"}:
+                excluded_regions = {anchor.get("child", "")}
+                if attachment_mode == "source-signpost":
+                    excluded_regions.add(attachment_id)
+                for region_id in region_ids - excluded_regions:
                     region = self.absolute_box(region_id)
                     if region is None:
                         continue
                     overlap_w = min(arrow.right, region.right) - max(arrow.x, region.x)
                     overlap_h = min(arrow.bottom, region.bottom) - max(arrow.y, region.y)
                     if overlap_w > tolerance and overlap_h > tolerance:
-                        self.fail(f"hierarchy target signpost overlaps a region: {arrow_id} / {region_id}")
+                        self.fail(f"hierarchy {attachment_mode.replace(chr(45), chr(32))} overlaps a region: {arrow_id} / {region_id}")
             arrow_polygon = None
             if style.get("shape") == "singleArrow" and visual_direction is not None:
                 arrow_polygon = single_arrow_polygon(
