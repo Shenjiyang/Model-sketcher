@@ -139,6 +139,12 @@ semantic parent block's own row or column, beside or beyond regions already plac
 last beyond everything placed. It picks the slot with the fewest regions between the parent
 block and the signpost, then the fewest nearer expandable modules, then the shortest distance.
 
+A signpost sits at the middle of its child edge unless another signpost lands on that same edge.
+Only those arrows share the edge: they take evenly spaced slots along it, and `_separate_signposts`
+then slides any that still touch. A direct corridor arrow into a different side of the same child
+is not a competitor, so it must not push an unrelated signpost off the child's centre — the
+signpost then points at empty boundary instead of the child's entry row.
+
 Do not add expansions as layout-only edges to the single `INCLUDE_CHILDREN` graph with root
 direction `UP`. Layered ELK treats such an edge as a layer dependency along that one shared
 direction, so every child lands in a later layer above its parent: the master becomes level

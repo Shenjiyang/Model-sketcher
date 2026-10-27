@@ -586,11 +586,9 @@ def plan_hierarchy_arrows(data: dict, layout: dict) -> dict:
         child_region_id = data["nodes"][target_id]["region"]
         attachment_mode, attachment_id, parent, attachment = hierarchy_attachment(edge_id, edge, layout)
         child = region_boxes[child_region_id]
-        peers = sorted(eid for eid, candidate in data.get("edges", {}).items()
-                       if candidate.get("kind") == "expand" and
-                       data["nodes"][candidate["target"]]["region"] == child_region_id)
-        slot = peers.index(edge_id) if edge_id in peers else 0
-        fraction = 0.5 if len(peers) < 2 else 0.25 + 0.5 * slot / (len(peers) - 1)
+        # Signposts are centred first; _spread_signposts() then shares one child
+        # edge only among the arrows that actually land on that edge.
+        fraction = 0.5
         preferred_side = attachment.get("side")
         if attachment_mode == "target-signpost":
             if preferred_side == "north":
@@ -681,9 +679,35 @@ def plan_hierarchy_arrows(data: dict, layout: dict) -> dict:
             **({"anchor_label": attachment["anchor_label"]} if attachment.get("anchor_label") else {}),
             **({"display_label": attachment["display_label"]} if attachment.get("display_label") else {}),
         }
+    _spread_signposts(arrows, region_boxes)
     _separate_signposts(arrows, region_boxes)
     finalize_hierarchy_labels(data, layout, arrows)
     return arrows
+
+
+def _spread_signposts(arrows: dict, region_boxes: dict) -> None:
+    """Share one child edge among the signposts that land on it.
+
+    A corridor arrow onto a different side of the same child does not compete
+    for a slot on this edge, so it must not shift this signpost away from the
+    child's centre.
+    """
+    groups: dict[tuple[str, str], list[str]] = {}
+    for edge_id in sorted(arrows):
+        arrow = arrows[edge_id]
+        if arrow.get("attachment_mode") == "target-signpost":
+            groups.setdefault((arrow["child_region"], arrow["direction"]), []).append(edge_id)
+    for (child_region, direction), edge_ids in groups.items():
+        if len(edge_ids) < 2:
+            continue
+        child = region_boxes[child_region]
+        for index, edge_id in enumerate(edge_ids):
+            arrow = arrows[edge_id]
+            fraction = 0.25 + 0.5 * index / (len(edge_ids) - 1)
+            if direction in {"north", "south"}:
+                arrow["x"] = round(child["x"] + (child["w"] - arrow["w"]) * fraction, 2)
+            else:
+                arrow["y"] = round(child["y"] + (child["h"] - arrow["h"]) * fraction, 2)
 
 
 def _separate_signposts(arrows: dict, region_boxes: dict) -> None:

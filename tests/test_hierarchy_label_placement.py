@@ -312,6 +312,68 @@ class BesideObstacleTests(unittest.TestCase):
         self.assertGreater(arrow["label_offset"][1], 0.0)
 
 
+class SignpostSharingTests(unittest.TestCase):
+    """Only signposts on the same child edge share that edge's slots."""
+
+    def _world(self, far_regions: dict) -> tuple[dict, dict]:
+        regions = {
+            "child": {"label": "child"},
+            "west-corridor": {"label": "west corridor"},
+            "child_node": {"label": "child"},
+            **{region_id: {"label": region_id} for region_id in far_regions},
+        }
+        layout = {
+            "nodes": {
+                "west_node": {"x": 1500.0, "y": 250.0, "w": 200.0, "h": 100.0},
+                "child_node": {"x": 2200.0, "y": 250.0, "w": 200.0, "h": 100.0},
+            },
+            "regions": {
+                "child": {"x": 2000.0, "y": 0.0, "w": 1000.0, "h": 600.0},
+                "west-corridor": {"x": 1400.0, "y": 0.0, "w": 480.0, "h": 600.0},
+                **far_regions,
+            },
+        }
+        for region_id, box in far_regions.items():
+            layout["nodes"][f"{region_id}_node"] = {"x": box["x"] + 20.0, "y": box["y"] + 20.0, "w": 200.0, "h": 100.0}
+        edges = {
+            "e_corridor": {"kind": "expand", "source": "west_node", "target": "child_node", "label": "expands"},
+        }
+        for region_id in far_regions:
+            edges[f"e_{region_id}"] = {"kind": "expand", "source": f"{region_id}_node",
+                                       "target": "child_node", "label": "expands"}
+        data = {
+            "nodes": {
+                "west_node": {"label": "west", "region": "west-corridor"},
+                "child_node": {"label": "child", "region": "child"},
+                **{f"{region_id}_node": {"label": region_id, "region": region_id} for region_id in far_regions},
+            },
+            "regions": regions,
+            "edges": edges,
+        }
+        return data, layout
+
+    def test_corridor_peer_on_another_side_keeps_the_signpost_centred(self) -> None:
+        data, layout = self._world({"far": {"x": 2200.0, "y": 1500.0, "w": 300.0, "h": 300.0}})
+        arrows = plan_hierarchy_arrows(data, layout)
+        self.assertNotEqual(arrows["e_corridor"]["attachment_mode"], "target-signpost")
+        signpost = arrows["e_far"]
+        self.assertEqual(signpost["attachment_mode"], "target-signpost")
+        self.assertEqual(signpost["direction"], "north")
+        # Centred under the child, not pushed to a fraction slot by the corridor arrow.
+        self.assertAlmostEqual(signpost["x"], 2000.0 + (1000.0 - 96.0) * 0.5, places=2)
+
+    def test_two_signposts_on_the_same_edge_still_spread(self) -> None:
+        data, layout = self._world({
+            "far-a": {"x": 2200.0, "y": 1500.0, "w": 300.0, "h": 300.0},
+            "far-b": {"x": 2100.0, "y": 2400.0, "w": 300.0, "h": 300.0},
+        })
+        arrows = plan_hierarchy_arrows(data, layout)
+        first, second = arrows["e_far-a"], arrows["e_far-b"]
+        self.assertEqual({first["direction"], second["direction"]}, {"north"})
+        self.assertAlmostEqual(first["x"], 2000.0 + 904.0 * 0.25, places=2)
+        self.assertAlmostEqual(second["x"], 2000.0 + 904.0 * 0.75, places=2)
+
+
 class ArrowAreaTests(unittest.TestCase):
     def test_cell_area_matches_the_polygon_formula(self) -> None:
         # 96x120 N-S arrow at 0.52/0.38: 0.5124 * w * h.
