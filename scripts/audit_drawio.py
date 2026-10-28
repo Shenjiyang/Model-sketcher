@@ -25,6 +25,7 @@ from hierarchy_arrow_geometry import (
     segment_intersects_polygon,
     single_arrow_polygon,
 )
+from signpost_geometry import aim_band
 
 
 ROOT_IDS = {"0", "1", None}
@@ -163,6 +164,13 @@ def strip_markup(value: str) -> str:
     return " ".join(text.split())
 
 
+def plain_id(value: object) -> str:
+    """Drop a manifest ``kind:`` prefix, tolerating IDs that have none."""
+    text = str(value or "")
+    head, sep, tail = text.partition(":")
+    return tail if sep else head
+
+
 def markup_lines(value: str) -> list[str]:
     text = html.unescape(value)
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
@@ -299,6 +307,10 @@ class PageAudit:
         self.box_cache: dict[str, Box] = {}
         self.errors: list[str] = []
         self.warnings: list[str] = []
+        # Optional readability data for every signpost: the aim predicate
+        # already proves direction, but distance and off-centre offset are
+        # project-scale policy, reported here instead of hard-coded.
+        self.signpost_metrics: dict[str, dict[str, Any]] = {}
 
     def fail(self, message: str) -> None:
         self.errors.append(f"[{self.name}] {message}")
@@ -2853,6 +2865,20 @@ class PageAudit:
             if not isinstance(reason, str) or not reason.strip():
                 self.fail(f"straight hierarchy-arrow aspect exception missing reason: {arrow_id}")
         region_ids, hierarchy_ids, ignored_ids = self.vertex_sets()
+        region_boxes: dict[str, dict[str, float]] = {}
+        for region_id in region_ids:
+            box = self.absolute_box(region_id)
+            if box is not None:
+                region_boxes[plain_id(region_id)] = {
+                    "x": box.x, "y": box.y, "w": box.w, "h": box.h,
+                }
+        region_parents: dict[str, str | None] = {region_id: None for region_id in region_boxes}
+        declared_parents = self.config.get("region_parents") or {}
+        if isinstance(declared_parents, dict):
+            for child, parent in declared_parents.items():
+                child_id = plain_id(child)
+                if child_id in region_parents:
+                    region_parents[child_id] = plain_id(parent) if parent else None
         arrow_polygons: dict[str, list[tuple[float, float]]] = {}
         for arrow_id, anchor in anchors.items():
             arrow = self.absolute_box(arrow_id)
@@ -2916,6 +2942,69 @@ class PageAudit:
             if direction not in checks:
                 self.fail(f"invalid hierarchy direction: {arrow_id} -> {direction!r}")
                 continue
+            canonical_direction = {
+                "right": "east", "left": "west", "down": "south", "up": "north",
+            }[direction]
+            child_id = plain_id(anchor.get("child"))
+            aim = None
+            if child_id in region_boxes:
+                aim = aim_band(
+                    {"x": arrow.x, "y": arrow.y, "w": arrow.w, "h": arrow.h},
+                    canonical_direction, child_id, region_boxes, region_parents,
+                    tolerance=tolerance,
+                )
+                if not aim.hit:
+                    self.fail(
+                        f"hierarchy arrow does not aim at its child region: {arrow_id}; "
+                        f"{aim.describe()}"
+                    )
+            if aim is not None and attachment_mode in {"target-signpost", "source-signpost"}:
+                self.signpost_metrics[arrow_id] = {
+                    "mode": attachment_mode,
+                    "direction": direction,
+                    "child_region": anchor.get("child"),
+                    "aimed": aim.hit,
+                    "empty_run_px": (
+                        None if aim.child_distance is None else round(aim.child_distance, 2)
+                    ),
+                    "overlap": round(aim.overlap, 2),
+                    "overlap_ratio": (
+                        None if aim.overlap_ratio is None else round(aim.overlap_ratio, 3)
+                    ),
+                    "offset_ratio": (
+                        None if aim.offset_ratio is None else round(aim.offset_ratio, 3)
+                    ),
+                    "blocked_by": aim.blocked_by,
+                }
+                limits = self.config.get("signpost_aim_limits")
+                if limits is not None and not isinstance(limits, dict):
+                    self.fail("signpost_aim_limits must be an object")
+                elif isinstance(limits, dict):
+                    try:
+                        maximum_run = limits.get("maximum_empty_run")
+                        if (aim.hit and maximum_run is not None
+                                and aim.child_distance is not None
+                                and aim.child_distance > float(maximum_run)):
+                            self.warn(
+                                f"signpost empty run exceeds the project limit: {arrow_id} "
+                                f"({aim.child_distance:.1f} > {float(maximum_run):g})"
+                            )
+                        minimum_overlap = limits.get("minimum_overlap_ratio")
+                        if (minimum_overlap is not None and aim.overlap_ratio is not None
+                                and aim.overlap_ratio < float(minimum_overlap)):
+                            self.warn(
+                                f"signpost band overlaps its child sparsely: {arrow_id} "
+                                f"({aim.overlap_ratio:.3f} < {float(minimum_overlap):g})"
+                            )
+                        maximum_offset = limits.get("maximum_offset_ratio")
+                        if (maximum_offset is not None and aim.offset_ratio is not None
+                                and abs(aim.offset_ratio) > float(maximum_offset)):
+                            self.warn(
+                                f"signpost band is off the child centre: {arrow_id} "
+                                f"(|{aim.offset_ratio:.3f}| > {float(maximum_offset):g})"
+                            )
+                    except (TypeError, ValueError):
+                        self.fail("signpost_aim_limits entries must be numbers")
             length = arrow.h if direction in {"up", "down"} else arrow.w
             thickness = arrow.w if direction in {"up", "down"} else arrow.h
             if length + tolerance < minimum_length or thickness + tolerance < minimum_thickness:
@@ -2964,16 +3053,6 @@ class PageAudit:
                         self.fail(
                             f"hierarchy source signpost reaches the child instead of pointing at it: {arrow_id}"
                         )
-                parent_center = (parent.x + parent.w / 2, parent.y + parent.h / 2)
-                child_center = (child.x + child.w / 2, child.y + child.h / 2)
-                points_toward_child = {
-                    "right": child_center[0] > parent_center[0],
-                    "left": child_center[0] < parent_center[0],
-                    "down": child_center[1] > parent_center[1],
-                    "up": child_center[1] < parent_center[1],
-                }[direction]
-                if not points_toward_child:
-                    self.fail(f"hierarchy {attachment_mode.replace(chr(45), chr(32))} points away from its child: {arrow_id}")
             elif parent_overlap <= tolerance or child_overlap <= tolerance or not center_attached:
                 self.fail(f"hierarchy arrow misses the attachment or child corridor: {arrow_id}")
             actual_tail, expected_tail, actual_tip, expected_tip = checks[direction]
@@ -3068,6 +3147,7 @@ class PageAudit:
             "edges": sum(cell.get("edge") == "1" for cell in self.by_id.values()),
             "errors": self.errors,
             "warnings": self.warnings,
+            "signpost_metrics": self.signpost_metrics,
         }
 
 

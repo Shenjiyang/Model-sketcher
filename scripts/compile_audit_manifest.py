@@ -356,6 +356,11 @@ def build_manifest(data: dict, layout: dict | None = None) -> dict:
             "parallel_lane_gap_exceptions": {},
             "maximum_straight_hierarchy_arrow_aspect_ratio": 6.0,
             "straight_hierarchy_arrow_aspect_exceptions": {},
+            # Optional readability policy for signposts. Direction is proved by
+            # the shared aim predicate; these limits only warn when a legal
+            # aim is hard to read at this project's scale. Keys:
+            # maximum_empty_run (px), minimum_overlap_ratio, maximum_offset_ratio.
+            "signpost_aim_limits": {},
             "density_contract": {
                 "minimum_region_content_width_ratio": 0.35,
                 "minimum_region_content_height_ratio": 0.35,

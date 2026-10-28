@@ -19,6 +19,7 @@ from semantic_palette import (
     semantic_style,
 )
 from hierarchy_arrow_geometry import COMPILED_ARROW_SIZE_RATIO, COMPILED_ARROW_WIDTH_RATIO
+from signpost_geometry import aim_band
 from typography import resolve_typography, wrapped_label_lines
 from validate_architecture_ir import edge_display_label, load, validate
 from view_projection import project_active_view, project_layout_view
@@ -324,6 +325,9 @@ def validate_hierarchy_arrow_geometry(data: dict, layout: dict) -> list[str]:
         )
         return errors
     node_boxes, region_boxes = layout.get("nodes", {}), layout.get("regions", {})
+    region_parents = {
+        region_id: region.get("parent") for region_id, region in data["regions"].items()
+    }
     for edge_id, edge in expand_edges.items():
         arrow = arrows[edge_id]
         child_region_id = data["nodes"][edge["target"]]["region"]
@@ -400,6 +404,19 @@ def validate_hierarchy_arrow_geometry(data: dict, layout: dict) -> list[str]:
         if direction not in checks:
             errors.append(f"expand relation {edge_id} has invalid hierarchy direction {direction!r}")
             continue
+        # One aim invariant for every mode: the arrow's own cross-section,
+        # extended in its direction, must meet the child region before any
+        # unrelated region. For direct arrows the tip touches the child, so
+        # this is degenerate; for signposts it is the whole point.
+        aim = aim_band(
+            {"x": x, "y": y, "w": width, "h": height},
+            direction, child_region_id, region_boxes, region_parents,
+        )
+        if not aim.hit:
+            errors.append(
+                f"expand relation {edge_id} hierarchy arrow does not aim at child region "
+                f"{child_region_id}: {aim.describe()}"
+            )
         if direction in {"north", "south"}:
             parent_overlap = min(x + width, parent["x"] + parent["w"]) - max(x, parent["x"])
             child_overlap = min(x + width, child["x"] + child["w"]) - max(x, child["x"])
@@ -430,16 +447,6 @@ def validate_hierarchy_arrow_geometry(data: dict, layout: dict) -> list[str]:
                     errors.append(
                         f"expand relation {edge_id} source signpost reaches the child instead of pointing at it"
                     )
-            parent_center = (parent["x"] + parent["w"] / 2, parent["y"] + parent["h"] / 2)
-            child_center = (child["x"] + child["w"] / 2, child["y"] + child["h"] / 2)
-            points_toward_child = {
-                "east": child_center[0] > parent_center[0],
-                "west": child_center[0] < parent_center[0],
-                "south": child_center[1] > parent_center[1],
-                "north": child_center[1] < parent_center[1],
-            }[direction]
-            if not points_toward_child:
-                errors.append(f"expand relation {edge_id} {attachment_mode.replace(chr(45), chr(32))} points away from its child")
             for region_id, region in region_boxes.items():
                 if region_id == child_region_id:
                     continue

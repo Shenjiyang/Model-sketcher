@@ -53,12 +53,12 @@ Score each candidate using the following ordered concerns:
 
 Do not preassign every expansion the same compass direction. A level band is an output of the candidate comparison, not a constraint that suppresses left/right/down alternatives. Record a preferred side only after comparing all four sides, and reconsider it whenever a project refiner moves the parent, child, or neighboring obstacles.
 
-Reject a direct-corridor candidate immediately when it requires an unregistered floating arrow, an arrow through another region, a cable-like long route, or a child aligned beneath an unrelated module. If no direct candidate survives, first reflow existing regions: move auxiliary heads above the backbone, move modality branches to a side, stagger deeper levels, exchange sibling order, or rebalance the canvas. When several large children genuinely exhaust the four direct sides, use the planner's registered signpost fallback: place a compact labeled block arrow in the gap and avoid every other region. It must retain the real semantic parent and owner region in the registry and state a visible label naming either the anchor or the child.
+Reject a direct-corridor candidate immediately when it requires an unregistered floating arrow, an arrow through another region, a cable-like long route, or a child aligned beneath an unrelated module. If no direct candidate survives, first reflow existing regions: move auxiliary heads above the backbone, move modality branches to a side, stagger deeper levels, exchange sibling order, or rebalance the canvas. When several large children genuinely exhaust the four direct sides, use the planner's registered signpost fallback: place a compact labeled block arrow in the gap and avoid every other region. It must retain the real semantic parent and owner region in the registry and state a visible label naming either the anchor or the child. A free slot is not sufficient: the arrow's whole cross-section, extended in its direction, must meet the child region before any unrelated region.
 
 A signpost reads as an expansion only when a human can see where it starts and where it goes, so the planner grounds its tail:
 
-- `target-signpost` sits immediately outside the child with its tip on the child boundary. It is legal only when another visible box backs the tail within `SIGNPOST_GROUNDING_GAP` (`72 px`) behind the arrow and across its width; in open whitespace the same arrow reads as detached.
-- `source-signpost` is the fallback when no box backs the tail: the arrow moves to the owner-region boundary, its tail touches that frame, and its head points toward the child. Its visible label names the child detail (the edge verb is kept, e.g. `expands Sparse Attention + Lightning Indexer`) so the reader can resolve the distance; the child end carries no extra marker.
+- `target-signpost` sits immediately outside the child with its tip on the child boundary. It is legal only when another visible box backs the tail within `SIGNPOST_GROUNDING_GAP` (`72 px`) behind the arrow and across its width; in open whitespace the same arrow reads as detached. Its extended band meets the child first by construction, but the shared aim test still runs.
+- `source-signpost` is the fallback when no box backs the tail: the arrow moves to the owner-region boundary, its tail touches that frame, and its head points toward the child. Its visible label names the child detail (the edge verb is kept, e.g. `expands Sparse Attention + Lightning Indexer`) so the reader can resolve the distance; the child end carries no extra marker. The slot is not chosen on free space alone: the planner slides it along the owner edge until the arrow's cross-section meets the child's axis span, and it never falls back to an ungrounded target signpost. If no owner-edge slot aims at the child, planning fails closed and the macro layout must be recomposed.
 
 Neither mode is a second parent or an unregistered floating decoration.
 
@@ -73,7 +73,8 @@ semantic parent
   → reflow neighboring regions if none pass
   → if all direct sides remain exhausted, derive a registered signpost
   → keep it a target-signpost only if a visible box backs its tail
-  → otherwise anchor a source-signpost on the owner-region boundary
+  → otherwise slide a source-signpost along the owner edge until its band aims at the child
+  → if no slot aims, fail closed and recompose the layout
   → place child and external expansion geometry
   → instantiate the registered hierarchy arrow
 ```
@@ -143,6 +144,15 @@ way, or overlaps another region. The visible label must name the source anchor (
 source signpost, the child detail it points to), and that anchor
 is the parent's first line when the parent box lists several components.
 
+Compile, audit, and the planner share one scale-free aim predicate
+(`scripts/signpost_geometry.py`): the arrow's entire cross-section, extended in its
+pointing direction, must meet the child region before any unrelated region. The child's
+ancestor frames and whatever frame encloses the arrow itself are transparent, so nested
+regions never block their own child. This replaces the old single-axis bearing test, which
+accepted an arrow whose own line of sight ended in empty canvas. The predicate has no
+distance constant: a project may add readability warnings through
+`defaults.signpost_aim_limits`, but proximity is policy while aim is correctness.
+
 When top-level regions are joined only by expansion relations, ELK's macro coordinates are not
 kept: `auto_place_expansion_regions` re-places every top-level region around its semantic
 owner, so macro ELK hints do not decide where a child lands. When no straight-corridor slot is
@@ -153,9 +163,12 @@ block and the signpost, then the fewest nearer expandable modules, then the shor
 
 A signpost sits at the middle of its child edge unless another signpost lands on that same edge.
 Only those arrows share the edge: they take evenly spaced slots along it, and `_separate_signposts`
-then slides any that still touch. A direct corridor arrow into a different side of the same child
-is not a competitor, so it must not push an unrelated signpost off the child's centre — the
-signpost then points at empty boundary instead of the child's entry row.
+then slides any that still touch. Both spreading and separation may only slide a source
+signpost to a position whose band still meets the child; the planner re-checks every signpost
+after label growth and fails closed if one no longer aims. A direct corridor arrow into a
+different side of the same child is not a competitor, so it must not push an unrelated
+signpost off the child's centre — the signpost then points at empty boundary instead of the
+child's entry row.
 
 Do not add expansions as layout-only edges to the single `INCLUDE_CHILDREN` graph with root
 direction `UP`. Layered ELK treats such an edge as a layer dependency along that one shared
@@ -168,12 +181,14 @@ Laying out region interiors and the macro region graph separately
 intact but did not fix this either: ELK still does not keep each child overlapping its own
 parent, so most arrows remained signposts.
 
-A signpost that passes those gates can still be orphaned on the page. The planner, the
+A signpost that passes the blocking aim gate can still be orphaned on the page. The planner, the
 compiler pipeline, and `refresh_hierarchy_arrows.py` therefore print non-blocking
 `hierarchy attribution` warnings for every target signpost when either a region other than the
 parent's own and the child lies on the straight line from the parent block to the signpost, or
-another expandable module sits closer to the signpost than its registered parent. Treat each
-warning as a macro-placement defect: move the child region beside its parent through
+another expandable module sits closer to the signpost than its registered parent. Aim and
+attribution are different gates: aim is blocking because a misaimed arrow is unreadable;
+attribution stays a warning because it describes a placement that may still be valid after
+the label is read. Treat each warning as a macro-placement defect: move the child region beside its parent through
 `project-state.json.layout_overrides.regions`, then rerun. Do not silence it by relabeling.
 
 ## 5. Geometry gate
@@ -185,9 +200,9 @@ Before export, validate every registry entry:
 - arrow visual class is a hierarchy block arrow;
 - the semantic parent exists and the registered attachment region, if used, owns it;
 - in `parent-node` and `owner-region-boundary` mode, the tail touches the registered node or owner-region boundary on the declared side;
-- in `target-signpost` mode, the arrow is compact, points from the registered parent's side toward the child, and does not pretend that its tail touches the distant owner;
-- in `source-signpost` mode, the tail touches the owner-region boundary on the declared side, the head points toward the child without touching it, and the label names the child detail (or the anchor);
-- the tip touches the registered child boundary on the declared side;
+- in `target-signpost` mode, the arrow is compact, its extended cross-section meets the child before any unrelated region, and it does not pretend that its tail touches the distant owner;
+- in `source-signpost` mode, the tail touches the owner-region boundary on the declared side, the head's extended cross-section meets the child before any unrelated region without touching it, the slot was chosen from aiming positions only, and the label names the child detail (or the anchor);
+- in direct modes, the tip touches the registered child boundary on the declared side;
 - the arrow body does not intersect an unrelated visible node or region;
 - its label names the semantic parent, canonical definition, or family key through the registered anchor label;
 - every visible `expand_*` arrow is registered;
@@ -196,11 +211,11 @@ Before export, validate every registry entry:
 - parallel operator lanes remain adjacent and are not spread apart to create the arrow shaft;
 - ordinary node widths remain content/port-sized and are never stretched to improve a region-density score.
 
-The standard compiler emits a straight `singleArrow` when the selected attachment and child region share a clear horizontal or vertical corridor of sufficient width. It supports parent-node and owner-region-boundary direct attachment. After the layout planner proves that multiple large children exhaust all direct sides, it may emit a short `singleArrow` signpost: a target signpost at a grounded child-side slot, or a source signpost whose tail sits on the owner boundary when the child-side gap is open whitespace. It never silently draws a thin connector or detached diagonal arrow. Recompose the macro layout when neither a direct corridor nor a legal signpost slot exists. A project-specific bent hollow-arrow implementation remains legal only when it preserves the same monolithic visual weight and passes the applicable endpoint registry checks.
+The standard compiler emits a straight `singleArrow` when the selected attachment and child region share a clear horizontal or vertical corridor of sufficient width. It supports parent-node and owner-region-boundary direct attachment. After the layout planner proves that multiple large children exhaust all direct sides, it may emit a short `singleArrow` signpost: a target signpost at a grounded child-side slot, or a source signpost whose tail sits on the owner boundary when the child-side gap is open whitespace and an owner-edge slot aims at the child. It never silently draws a thin connector or detached diagonal arrow. When neither a direct corridor nor a legal signpost slot exists, the planner raises and the macro layout must be recomposed; it does not emit an ungrounded signpost. A project-specific bent hollow-arrow implementation remains legal only when it preserves the same monolithic visual weight and passes the applicable endpoint registry checks.
 
 Straight hierarchy arrows must also remain block-like rather than cable-like. The shared audit defaults to a maximum length-to-thickness ratio of `6.0`. Exceeding it is a blocking signal to compare the other three child sides, move the child closer, or use a compact reviewed bent block arrow. A project may declare an ID-specific exception only for a named source-backed obstacle; a desire to preserve an all-up/all-down level band is not a valid reason.
 
-Project-specific layout refinement runs before hierarchy-arrow derivation. After moving, resizing, or reflecting regions, call `scripts/refresh_hierarchy_arrows.py` with `--state project-state.json`. Arrow geometry remains derived output. If centered placement blocks real diagram content, preserve the reviewed correction in `layout_overrides.hierarchy_arrows`, not as an untracked edit to generated XML or layout. A legal override may choose another straight shaft position or thickness inside the same direct corridor, adjust a signpost within the same child-side slot, or slide a source signpost along the same owner edge; it may not override semantic parent, attachment mode, direction, or relax the manifest mapping, minimum size, applicable boundary attachment, ownership, label, or obstacle checks. Collision checks use the visible `singleArrow` polygon rather than its transparent rectangular corners.
+Project-specific layout refinement runs before hierarchy-arrow derivation. After moving, resizing, or reflecting regions, call `scripts/refresh_hierarchy_arrows.py` with `--state project-state.json`. Arrow geometry remains derived output. If centered placement blocks real diagram content, preserve the reviewed correction in `layout_overrides.hierarchy_arrows`, not as an untracked edit to generated XML or layout. A legal override may choose another straight shaft position or thickness inside the same direct corridor, adjust a signpost within the same child-side slot, or slide a source signpost along the same owner edge; it may not override semantic parent, attachment mode, direction, or relax the manifest mapping, minimum size, applicable boundary attachment, ownership, label, aim, or obstacle checks. Collision checks use the visible `singleArrow` polygon rather than its transparent rectangular corners.
 
 Use [scripts/audit_hierarchy_anchors.py](../scripts/audit_hierarchy_anchors.py) when the generator can emit the simple JSON geometry ledger accepted by that script. An internal generator audit is acceptable only when it enforces the same conditions and fails the build on any mismatch.
 

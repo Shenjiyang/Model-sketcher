@@ -1564,7 +1564,7 @@ class CompilerPipelineTest(unittest.TestCase):
             "north": "south", "south": "north", "east": "west", "west": "east",
         }[arrow["direction"]]
         errors = validate_hierarchy_arrow_geometry(data, reversed_layout)
-        self.assertTrue(any("points away from its child" in error for error in errors))
+        self.assertTrue(any("does not aim at child region" in error for error in errors))
 
         obstructed = json.loads(json.dumps(layout))
         parent = layout["regions"]["parent"]
@@ -1694,13 +1694,17 @@ class CompilerPipelineTest(unittest.TestCase):
 
     def test_hierarchy_arrow_planner_uses_signpost_without_a_straight_corridor(self):
         data = expansion_sample()
+        # The parent node sits in the owner's left corner while the child is
+        # right of it: no direct parent/child corridor exists. The owner frame
+        # is wide enough that a south-edge slot can still aim at the child.
         layout = {
-            "nodes": {"parent": {"x": 0, "y": 0, "w": 60, "h": 60}, "input": {"x": 220, "y": 220, "w": 50, "h": 50}},
-            "regions": {"parent": {"x": 0, "y": 0, "w": 100, "h": 100}, "detail": {"x": 200, "y": 200, "w": 120, "h": 120}},
+            "nodes": {"parent": {"x": 0, "y": 0, "w": 60, "h": 60}, "input": {"x": 200, "y": 340, "w": 50, "h": 50}},
+            "regions": {"parent": {"x": 0, "y": 0, "w": 300, "h": 100}, "detail": {"x": 150, "y": 300, "w": 250, "h": 120}},
         }
         arrow = plan_hierarchy_arrows(data, layout)["expand_detail"]
         # No frame backs a child-side signpost in this world, so the arrow keeps
-        # its tail on the owner and points south toward the child.
+        # its tail on the owner and points south toward the child. The slot is
+        # slid along the owner edge until the band actually meets the child.
         self.assertEqual(arrow["attachment_mode"], "source-signpost")
         self.assertEqual(arrow["parent"], "parent")
         self.assertEqual(arrow["attachment_id"], "parent")
@@ -1708,7 +1712,20 @@ class CompilerPipelineTest(unittest.TestCase):
         self.assertEqual(arrow["anchor_label"], "Parent definition")
         self.assertEqual(arrow["direction"], "south")
         self.assertAlmostEqual(arrow["y"], 100.0, places=2)
+        self.assertGreater(arrow["x"], 0.0)
         self.assertEqual(validate_hierarchy_arrow_geometry(data, layout | {"hierarchy_arrows": {"expand_detail": arrow}}), [])
+
+    def test_hierarchy_arrow_planner_fails_closed_when_no_axis_aims(self):
+        # Owner and child are diagonal with no shared axis-aligned band. A
+        # four-direction signpost cannot honestly represent this relation, so
+        # the planner must refuse instead of drawing a head into empty canvas.
+        data = expansion_sample()
+        layout = {
+            "nodes": {"parent": {"x": 0, "y": 0, "w": 60, "h": 60}, "input": {"x": 220, "y": 220, "w": 50, "h": 50}},
+            "regions": {"parent": {"x": 0, "y": 0, "w": 100, "h": 100}, "detail": {"x": 200, "y": 200, "w": 120, "h": 120}},
+        }
+        with self.assertRaisesRegex(ValueError, "no legal signpost"):
+            plan_hierarchy_arrows(data, layout)
 
     def test_signpost_slides_off_another_arrow_into_a_shared_child(self):
         from plan_layout import _separate_signposts
@@ -1719,7 +1736,7 @@ class CompilerPipelineTest(unittest.TestCase):
         signpost = {"x": 80, "y": 270, "w": 120, "h": 96, "direction": "east",
                     "attachment_mode": "target-signpost", "child_region": "child"}
         arrows = {"a_direct": direct, "b_signpost": signpost}
-        _separate_signposts(arrows, regions)
+        _separate_signposts(arrows, regions, {})
         self.assertEqual(arrows["a_direct"]["y"], 252)
         moved = arrows["b_signpost"]
         self.assertFalse(moved["y"] + moved["h"] + 8 > direct["y"] and direct["y"] + direct["h"] + 8 > moved["y"])

@@ -381,7 +381,7 @@ class SignpostSharingTests(unittest.TestCase):
 class SourceSignpostTests(unittest.TestCase):
     """An ungrounded target slot moves the arrow to the owner region."""
 
-    def _world(self, *, ground: dict | None = None) -> tuple[dict, dict]:
+    def _world(self, *, child_x: float = 500.0, ground: dict | None = None) -> tuple[dict, dict]:
         data = {
             "nodes": {
                 "parent_node": {"label": "parent", "region": "owner"},
@@ -399,25 +399,33 @@ class SourceSignpostTests(unittest.TestCase):
         layout = {
             "nodes": {
                 "parent_node": {"x": 200.0, "y": 2200.0, "w": 100.0, "h": 60.0},
-                "child_node": {"x": 900.0, "y": -400.0, "w": 200.0, "h": 60.0},
+                "child_node": {"x": child_x + 400.0, "y": -400.0, "w": 200.0, "h": 60.0},
             },
             "regions": {
                 "owner": {"x": 0.0, "y": 2000.0, "w": 500.0, "h": 500.0},
-                "child": {"x": 500.0, "y": -500.0, "w": 1000.0, "h": 600.0},
+                "child": {"x": child_x, "y": -500.0, "w": 1000.0, "h": 600.0},
             },
         }
         if ground is not None:
             layout["regions"]["ground"] = ground
         return data, layout
 
-    def test_ungrounded_child_slot_anchors_the_arrow_at_the_owner(self) -> None:
-        data, layout = self._world()
+    def test_unaligned_child_slot_fails_closed(self) -> None:
+        # The child starts exactly where the owner ends: every axis-aligned
+        # band from the owner edge misses it. Emitting a source signpost here
+        # would produce an arrow whose head points into empty canvas.
+        data, layout = self._world(child_x=500.0)
+        with self.assertRaisesRegex(ValueError, "no legal signpost"):
+            plan_hierarchy_arrows(data, layout)
+
+    def test_aligned_child_slot_anchors_the_arrow_at_the_owner(self) -> None:
+        data, layout = self._world(child_x=0.0)
         arrows = plan_hierarchy_arrows(data, layout)
         arrow = arrows["e_expand"]
         self.assertEqual(arrow["attachment_mode"], "source-signpost")
         self.assertEqual(arrow["attachment_id"], "owner")
-        # The child is mostly above the owner, so the arrow leaves the north
-        # edge, aligned with the semantic parent block.
+        # The child is above the owner and shares its cross-axis span, so the
+        # arrow leaves the north edge, aligned with the semantic parent block.
         self.assertEqual(arrow["direction"], "north")
         self.assertAlmostEqual(arrow["y"] + arrow["h"], 2000.0, places=2)
         self.assertAlmostEqual(arrow["x"] + arrow["w"] / 2, 250.0, places=2)
@@ -429,7 +437,7 @@ class SourceSignpostTests(unittest.TestCase):
     def test_grounded_child_slot_keeps_the_target_signpost(self) -> None:
         # A frame 30px behind the tail makes the child-side arrow legible, so
         # the planner leaves it at the child.
-        data, layout = self._world(ground={"x": 1000.0, "y": 250.0, "w": 200.0, "h": 150.0})
+        data, layout = self._world(child_x=500.0, ground={"x": 1000.0, "y": 250.0, "w": 200.0, "h": 150.0})
         arrows = plan_hierarchy_arrows(data, layout)
         self.assertEqual(arrows["e_expand"]["attachment_mode"], "target-signpost")
 
